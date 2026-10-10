@@ -1,15 +1,16 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import '../models/models.dart';
+import '../services/api_client.dart';
+import '../services/cv_service.dart';
+import '../services/job_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/cv_upload_button.dart';
 import '../widgets/cv_analysis_results.dart';
 import '../widgets/matched_jobs_section.dart';
 
-/// Week 5 Dashboard: same header, drawer, and background treatment as your
-/// existing screens (screenshots 2 & 4), with the new CV Upload, Analysis
-/// Results, and Matched Jobs sections wired in below the hero area.
-///
-/// Replace the TODOs with your actual state management / API calls
-/// (upload handler, analysis service, job-matching service).
+/// Week 6 Dashboard: identical layout/theme to Week 5, now driven by the
+/// Express + Supabase backend (upload -> parse -> analyze -> matched jobs).
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
@@ -18,28 +19,101 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  String? _fileName;
+  final _cvService = CvService();
+  final _jobService = JobService();
+
+  static const _maxBytes = 5 * 1024 * 1024;
+
+  CvRecord? _cv;
   bool _isUploading = false;
-  bool _hasAnalysis = false;
+  bool _isAnalyzing = false;
+  CvAnalysis? _analysis;
+  List<JobModel> _matchedJobs = [];
+  List<JobModel> _postedJobs = [];
+
+  bool get _hasAnalysis => _analysis != null;
+
+  @override
+  void initState() {
+    super.initState();
+    _bootstrap();
+  }
+
+  /// Load posted jobs, and restore the user's latest CV + analysis if any.
+  Future<void> _bootstrap() async {
+    try {
+      final jobs = await _jobService.listJobs();
+      final latest = await _cvService.latest();
+      if (!mounted) return;
+      setState(() {
+        _postedJobs = jobs;
+        _cv = latest.cv;
+        if (latest.bundle != null) {
+          _analysis = latest.bundle!.analysis;
+          _matchedJobs = latest.bundle!.matchedJobs;
+        }
+      });
+    } catch (e) {
+      _toast(ApiClient.messageFrom(e));
+    }
+  }
+
+  void _toast(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(msg)));
+  }
 
   Future<void> _pickFile() async {
-    // TODO: replace with real file_picker logic.
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['pdf', 'docx'],
+      withData: true, // bytes work on mobile and web
+    );
+    if (result == null || result.files.isEmpty) return;
+
+    final file = result.files.first;
+    if (file.bytes == null) return _toast('Could not read the selected file.');
+    if (file.size > _maxBytes) return _toast('File is larger than 5MB.');
+
     setState(() => _isUploading = true);
-    await Future.delayed(const Duration(milliseconds: 900));
-    setState(() {
-      _isUploading = false;
-      _fileName = 'John_Doe_CV.pdf';
-      _hasAnalysis = false;
-    });
+    try {
+      final cv = await _cvService.upload(file);
+      if (!mounted) return;
+      setState(() {
+        _cv = cv;
+        _analysis = null; // new CV -> previous analysis no longer applies
+        _matchedJobs = [];
+      });
+    } catch (e) {
+      _toast(ApiClient.messageFrom(e));
+    } finally {
+      if (mounted) setState(() => _isUploading = false);
+    }
   }
 
   Future<void> _analyze() async {
-    // TODO: replace with real analysis API call.
-    setState(() => _hasAnalysis = true);
+    final cv = _cv;
+    if (cv == null || _isAnalyzing) return;
+    setState(() => _isAnalyzing = true);
+    try {
+      final bundle = await _cvService.analyze(cv.id);
+      if (!mounted) return;
+      setState(() {
+        _analysis = bundle.analysis;
+        _matchedJobs = bundle.matchedJobs;
+      });
+    } catch (e) {
+      _toast(ApiClient.messageFrom(e));
+    } finally {
+      if (mounted) setState(() => _isAnalyzing = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final analysis = _analysis;
+
     return Scaffold(
       backgroundColor: AppColors.bgTop,
       drawer: const _AppDrawer(),
@@ -50,92 +124,53 @@ class _DashboardScreenState extends State<DashboardScreen> {
             children: [
               _DashboardHeader(),
               Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Your CV & Job Matches',
-                          style: AppTextStyles.screenTitle),
-                      const SizedBox(height: 4),
-                      const Text(
-                        'Upload your CV to get an instant match score and tailored job recommendations.',
-                        style: AppTextStyles.body,
-                      ),
-                      const SizedBox(height: 20),
+                child: RefreshIndicator(
+                  onRefresh: _bootstrap,
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Your CV & Job Matches',
+                            style: AppTextStyles.screenTitle),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Upload your CV to get an instant match score and tailored job recommendations.',
+                          style: AppTextStyles.body,
+                        ),
+                        const SizedBox(height: 20),
 
-                      // 1. Upload button
-                      CVUploadButton(
-                        fileName: _fileName,
-                        isUploading: _isUploading,
-                        onPickFile: _pickFile,
-                        onAnalyze: _analyze,
-                      ),
-
-                      const SizedBox(height: 20),
-
-                      // 2. Analysis results (only once analyzed)
-                      if (_hasAnalysis)
-                        CVAnalysisResults(
-                          matchScore: 78,
-                          skills: const [
-                            SkillTag('Flutter', SkillTagType.matched),
-                            SkillTag('REST APIs', SkillTagType.matched),
-                            SkillTag('Firebase', SkillTagType.matched),
-                            SkillTag('CI/CD', SkillTagType.missing),
-                            SkillTag('Unit Testing', SkillTagType.missing),
-                            SkillTag('State Mgmt (Bloc)', SkillTagType.suggested),
-                          ],
-                          suggestions: const [
-                            'Add measurable outcomes to your last role (e.g. "reduced load time by 30%").',
-                            'List a testing framework — most target roles ask for it explicitly.',
-                            'Mention any CI/CD tools you\'ve used, even briefly.',
-                          ],
+                        // 1. Upload button
+                        CVUploadButton(
+                          fileName: _cv?.fileName,
+                          isUploading: _isUploading || _isAnalyzing,
+                          onPickFile: _pickFile,
+                          onAnalyze: _analyze,
                         ),
 
-                      if (_hasAnalysis) const SizedBox(height: 20),
+                        const SizedBox(height: 20),
 
-                      // 3. Matched / Posted jobs
-                      MatchedJobsSection(
-                        title: _hasAnalysis ? 'Matched Jobs' : 'Posted Jobs',
-                        onSeeAll: () {},
-                        jobs: _hasAnalysis
-                            ? const [
-                                JobListing(
-                                  title: 'Mobile App Developer',
-                                  company: 'Nova Tech',
-                                  location: 'Dhaka, BD',
-                                  matchPercent: 88,
-                                ),
-                                JobListing(
-                                  title: 'Flutter Engineer',
-                                  company: 'Brightside Labs',
-                                  location: 'Remote',
-                                  matchPercent: 74,
-                                ),
-                                JobListing(
-                                  title: 'Junior Software Engineer',
-                                  company: 'Orbit Systems',
-                                  location: 'Dhaka, BD',
-                                  matchPercent: 52,
-                                ),
-                              ]
-                            : const [
-                                JobListing(
-                                  title: 'Mobile App Developer',
-                                  company: 'Nova Tech',
-                                  location: 'Dhaka, BD',
-                                  showMatch: false,
-                                ),
-                                JobListing(
-                                  title: 'Flutter Engineer',
-                                  company: 'Brightside Labs',
-                                  location: 'Remote',
-                                  showMatch: false,
-                                ),
-                              ],
-                      ),
-                    ],
+                        // 2. Analysis results (only once analyzed)
+                        if (analysis != null) ...[
+                          CVAnalysisResults(
+                            matchScore: analysis.score,
+                            skills: analysis.skillTags,
+                            suggestions: analysis.suggestions,
+                          ),
+                          const SizedBox(height: 20),
+                        ],
+
+                        // 3. Matched / Posted jobs
+                        MatchedJobsSection(
+                          title: _hasAnalysis ? 'Matched Jobs' : 'Posted Jobs',
+                          onSeeAll: () {},
+                          jobs: (_hasAnalysis ? _matchedJobs : _postedJobs)
+                              .map((j) => j.toListing())
+                              .toList(),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -147,8 +182,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 }
 
-/// Header bar: hamburger + cursive "EmployScope" wordmark, matching
-/// screenshot 2 / 4.
+/// Header bar: hamburger + cursive "EmployScope" wordmark.
 class _DashboardHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -170,8 +204,7 @@ class _DashboardHeader extends StatelessWidget {
   }
 }
 
-/// Drawer matching screenshot 4 exactly: solid navy fill, cursive logo,
-/// divider, then icon + label nav items.
+/// Drawer: solid navy fill, cursive logo, divider, icon + label nav items.
 class _AppDrawer extends StatelessWidget {
   const _AppDrawer();
 

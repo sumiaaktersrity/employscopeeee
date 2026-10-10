@@ -46,3 +46,7 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+# Week 6 backend: secrets and big folders
+backend/node_modules/
+backend/.env
+**/.env
