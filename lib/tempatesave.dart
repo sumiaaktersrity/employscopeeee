@@ -6,7 +6,7 @@ import 'app_theme.dart';
 
 
 // Physical phone over USB -> localhost + `adb reverse tcp:3000 tcp:3000`
-const String baseUrl = 'http://localhost:3000';
+const String baseUrl = 'http://10.239.247.186:3000';
 const String devUserId = '1'; // replace when real auth exists
 
 Map<String, String> authHeaders() => {
