@@ -3,6 +3,7 @@ import 'package:flutter/rendering.dart';
 import 'package:google_fonts/google_fonts.dart';
 import "dashboard_screen2.dart";
 import 'tempatesave.dart';
+import 'createcv.dart';
 //import '/login.dart';
 
 class Dashboard extends StatelessWidget {
@@ -196,7 +197,7 @@ Text(
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const Dashboard()),
+                  MaterialPageRoute(builder: (context) => const CreateCvPage()),
                 );
               },
               style: OutlinedButton.styleFrom(
