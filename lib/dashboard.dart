@@ -5,6 +5,7 @@ import "dashboard_screen2.dart";
 import 'tempatesave.dart';
 import 'createcv.dart';
 //import '/login.dart';
+import 'presave.dart';
 
 class Dashboard extends StatelessWidget {
   const Dashboard({super.key});
@@ -318,6 +319,40 @@ Text(
               ),
               child: Text(
                 'Targeted Skills and Career Goals\n',
+                style: GoogleFonts.getFont(
+                  'IBM Plex Serif',
+                  color: const Color.fromARGB(255, 199, 190, 229),
+                  fontSize: 20,
+                ),
+              ),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+          child: SizedBox(
+            width: double.infinity,
+            height: 40,
+            child: OutlinedButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const PresavePage()),
+                );
+              },
+              style: OutlinedButton.styleFrom(
+                backgroundColor: const Color.fromARGB(97, 58, 55, 84),
+                side: const BorderSide(
+                  color: Color.fromARGB(189, 202, 190, 231),
+                  width: 0,
+                ),
+                shadowColor: const Color.fromARGB(217, 38, 39, 41),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(5),
+                ),
+              ),
+              child: Text(
+                'Pre Saved Information\n',
                 style: GoogleFonts.getFont(
                   'IBM Plex Serif',
                   color: const Color.fromARGB(255, 199, 190, 229),
