@@ -18,6 +18,8 @@ app.get('/api/health', (_req, res) => res.json({ ok: true }));
 app.use('/api/cv', require('./routes/cv.routes'));
 app.use('/api/jobs', require('./routes/jobs.routes'));
 app.use('/api/templates', require('./routes/templates'));
+   const jobRequirements = require('./createcv');
+   app.use('/api/job', jobRequirements);
 
 app.use((_req, res) => res.status(404).json({ error: 'Route not found' }));
 

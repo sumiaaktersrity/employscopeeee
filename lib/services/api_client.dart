@@ -1,7 +1,8 @@
 import 'package:dio/dio.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 import '../config/api_config.dart';
 
-/// Single shared Dio instance; attaches the user header to every request.
+/// Single shared Dio instance; attaches the Supabase access token to every request.
 class ApiClient {
   ApiClient._();
 
@@ -13,7 +14,8 @@ class ApiClient {
     ),
   )..interceptors.addAll([
       InterceptorsWrapper(onRequest: (o, h) {
-        o.headers['x-user-id'] = ApiConfig.currentUserId.toString();
+        final token = Supabase.instance.client.auth.currentSession?.accessToken;
+        if (token != null) o.headers['Authorization'] = 'Bearer $token';
         h.next(o);
       }),
       LogInterceptor(requestHeader: true, responseBody: true, error: true),
@@ -28,7 +30,7 @@ class ApiClient {
       if (data is Map && data['error'] != null) return data['error'].toString();
       if (e.type == DioExceptionType.connectionError ||
           e.type == DioExceptionType.connectionTimeout) {
-        return 'Cannot reach the server. Is the backend running?';
+        return 'Connection error. Please check your server connection.';
       }
     }
     return 'Something went wrong. Please try again.';

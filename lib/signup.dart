@@ -1,9 +1,61 @@
 import 'package:employscope/login.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show Supabase, AuthException;
 
-class Signup extends StatelessWidget {
+class Signup extends StatefulWidget {
   const Signup({super.key});
+
+  @override
+  State<Signup> createState() => _SignupState();
+}
+
+class _SignupState extends State<Signup> {
+  final _emailCtrl = TextEditingController();
+  final _passCtrl = TextEditingController();
+  bool _loading = false;
+
+  @override
+  void dispose() {
+    _emailCtrl.dispose();
+    _passCtrl.dispose();
+    super.dispose();
+  }
+
+  void _snack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _signUp() async {
+    final email = _emailCtrl.text.trim();
+    final password = _passCtrl.text;
+    if (email.isEmpty || password.isEmpty) {
+      _snack('Enter an email and a password.');
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      final res = await Supabase.instance.client.auth
+          .signUp(email: email, password: password);
+      if (!mounted) return;
+      _snack(res.session == null
+          ? 'Account created. Check your email to confirm, then log in.'
+          : 'Account created. Please log in.');
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const LoginPage()),
+      );
+           } on AuthException catch (e) {
+      debugPrint('SIGNUP AuthException -> message: ${e.message} | status: ${e.statusCode} | type: ${e.runtimeType}');
+      _snack(e.message);
+    } catch (e, st) {
+      debugPrint('SIGNUP other error -> $e\n$st');
+      _snack('Something went wrong. Please try again.');
+    } finally  {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -75,8 +127,8 @@ class Signup extends StatelessWidget {
 
                  
                  TextField(
-
-
+  controller: _emailCtrl,
+  keyboardType: TextInputType.emailAddress,
   decoration: InputDecoration(
     hintText: 'Enter your email',
     hintStyle: const TextStyle(color: Color.fromARGB(92, 255, 255, 255)),
@@ -88,7 +140,8 @@ class Signup extends StatelessWidget {
 
 
 TextField(
-
+  controller: _passCtrl,
+  obscureText: true,
   decoration: InputDecoration(
     hintText: 'Enter your password',
     hintStyle: const TextStyle(color: Color.fromARGB(92, 255, 255, 255)),
@@ -153,14 +206,7 @@ TextField(
                     height: 55,
 
                     child: OutlinedButton(
-                     onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const LoginPage(),
-                        ),
-                      );
-                    },
+                     onPressed: _loading ? null : _signUp,
                       style: OutlinedButton.styleFrom(
                         side: const BorderSide(
                           color: Colors.white,

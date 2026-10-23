@@ -61,7 +61,7 @@ class AppTextStyles {
   // uses a generic cursive fallback so the file compiles standalone.
  static  TextStyle logo = GoogleFonts.playwriteBeWal(
   fontSize: 15,
-  color: const Color.fromARGB(195, 175, 171, 197),
+  color: const Color.fromARGB(255, 223, 218, 241),
 );
 
   static const TextStyle screenTitle = TextStyle(

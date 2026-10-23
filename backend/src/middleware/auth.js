@@ -1,22 +1,47 @@
 const { supabase } = require('../config/supabase');
 
 /**
- * TEMPORARY auth: reads the numeric user id from the `x-user-id` header.
- * Replace the body of `requireUser` with real JWT verification once Login
- * is wired (e.g. supabase.auth.getUser(token) -> map to public."User".id).
+ * Verifies the Supabase access token sent as `Authorization: Bearer <token>`,
+ * then maps that Supabase account to its row in public."User" (matched by
+ * email, created with role 'user' on first login).
  * Every route only depends on `req.userId`, so nothing else must change.
  */
-function requireUser(req, res, next) {
-  const id = Number(req.header('x-user-id') || 1);
+async function requireUser(req, res, next) {
+  try {
+    const header = req.header('authorization') || '';
+    const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
+    if (!token) return res.status(401).json({ error: 'Not logged in' });
 
-  if (!Number.isSafeInteger(id) || id <= 0) {
-    return res.status(401).json({ error: 'Invalid user ID' });
+    const { data, error } = await supabase.auth.getUser(token);
+    const email = data?.user?.email?.toLowerCase();
+    if (error || !email) {
+      return res.status(401).json({ error: 'Invalid or expired session' });
+    }
+
+    let { data: row, error: selErr } = await supabase
+      .from('User').select('id').eq('email', email).maybeSingle();
+    if (selErr) return next(selErr);
+
+    if (!row) {
+      const { data: created, error: insErr } = await supabase
+        .from('User').insert({ email, role: 'user' }).select('id').single();
+      if (insErr) {
+        // Two first requests can race; if the row exists now, use it.
+        const { data: again } = await supabase
+          .from('User').select('id').eq('email', email).maybeSingle();
+        if (!again) return next(insErr);
+        row = again;
+      } else {
+        row = created;
+      }
+    }
+
+    req.user = { id: row.id, email };
+    req.userId = row.id;
+    next();
+  } catch (err) {
+    next(err);
   }
-
-  req.user = { id };
-  req.userId = id;
-
-  next();
 }
 
 /** Allow only users whose public."User".role is in `roles`. */

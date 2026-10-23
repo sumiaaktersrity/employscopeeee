@@ -1,7 +1,15 @@
+import 'dart:convert';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 
 import 'app_theme.dart'; // the design tokens file (AppColors, AppTextStyles, ...)
+
+// TODO: replace with your real backend URL (or the matching ApiConfig value).
+// Android emulator reaches your PC at 10.0.2.2. A real phone needs your PC's LAN IP.
+const String _backendUrl = 'http://localhost:3000';
 
 class CreateCvPage extends StatefulWidget {
   const CreateCvPage({super.key});
@@ -15,22 +23,13 @@ class _CreateCvPageState extends State<CreateCvPage> {
   final _jobUrlCtrl = TextEditingController();
 
   String? _pdfName;
+  List<int>? _pdfBytes;
   bool _showForm = false;
   bool _showResults = false;
+  bool _loading = false;
+  String? _error;
 
-  // Hardcoded for now: requirement name -> match percentage.
-  final List<_Requirement> _requirements = const [
-    _Requirement('Flutter / Dart development', 90),
-    _Requirement('REST API integration', 75),
-    _Requirement('Firebase / backend basics', 60),
-    _Requirement('State management (Provider / Bloc)', 40),
-    _Requirement('Unit & widget testing', 25),
-  ];
-
-  int get _overallMatch =>
-      (_requirements.map((r) => r.match).reduce((a, b) => a + b) /
-              _requirements.length)
-          .round();
+  List<String> _requirements = [];
 
   @override
   void dispose() {
@@ -45,14 +44,75 @@ class _CreateCvPageState extends State<CreateCvPage> {
       allowedExtensions: ['pdf'],
     );
     if (file != null) {
-      setState(() => _pdfName = file.name);
+      final bytes = await file.readAsBytes();
+      if (!mounted) return;
+      setState(() {
+        _pdfName = file.name;
+        _pdfBytes = bytes;
+      });
     }
   }
 
-  Color _colorFor(int match) {
-    if (match >= 75) return AppColors.accentGood;
-    if (match >= 50) return AppColors.accentWarn;
-    return AppColors.accentGap;
+  Future<void> _submit() async {
+    final text = _jobTextCtrl.text.trim();
+    final url = _jobUrlCtrl.text.trim();
+    final hasPdf = _pdfBytes != null;
+
+    if (text.isEmpty && url.isEmpty && !hasPdf) {
+      setState(() => _error = 'Add a job description, a URL, or a PDF first.');
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _error = null;
+      _showResults = false;
+    });
+
+    try {
+      final token = Supabase.instance.client.auth.currentSession?.accessToken;
+      if (token == null) {
+        throw 'You are not logged in. Please log in again.';
+      }
+
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$_backendUrl/api/job/requirements'),
+      )..headers['Authorization'] = 'Bearer $token';
+
+      if (text.isNotEmpty) request.fields['jobText'] = text;
+      if (url.isNotEmpty) request.fields['jobUrl'] = url;
+      if (hasPdf) {
+        request.files.add(http.MultipartFile.fromBytes(
+          'pdf',
+          _pdfBytes!,
+          filename: _pdfName ?? 'job.pdf',
+        ));
+      }
+
+      final streamed =
+          await request.send().timeout(const Duration(seconds: 90));
+      final response = await http.Response.fromStream(streamed);
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+
+      if (response.statusCode != 200) {
+        throw (body['error'] ?? 'Something went wrong').toString();
+      }
+
+      final list = (body['requirements'] as List).map((e) => e.toString()).toList();
+      if (list.isEmpty) {
+        throw 'No requirements were found in that job post.';
+      }
+
+      setState(() {
+        _requirements = list;
+        _showResults = true;
+      });
+    } catch (e) {
+      setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   @override
@@ -113,6 +173,7 @@ class _CreateCvPageState extends State<CreateCvPage> {
         onPressed: () => setState(() {
           _showForm = true;
           _showResults = false;
+          _error = null;
         }),
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.primaryButtonFill,
@@ -141,6 +202,7 @@ class _CreateCvPageState extends State<CreateCvPage> {
             controller: _jobTextCtrl,
             maxLines: 4,
             minLines: 2,
+            enabled: !_loading,
             style: const TextStyle(color: AppColors.textPrimary),
             decoration: AppDecorations.underlineInput(
                 'Paste the job description here'),
@@ -151,6 +213,7 @@ class _CreateCvPageState extends State<CreateCvPage> {
           TextField(
             controller: _jobUrlCtrl,
             keyboardType: TextInputType.url,
+            enabled: !_loading,
             style: const TextStyle(color: AppColors.textPrimary),
             decoration: AppDecorations.underlineInput('https://...'),
           ),
@@ -161,7 +224,7 @@ class _CreateCvPageState extends State<CreateCvPage> {
           Row(
             children: [
               OutlinedButton.icon(
-                onPressed: _pickPdf,
+                onPressed: _loading ? null : _pickPdf,
                 icon: const Icon(Icons.upload_file, size: 18),
                 label: const Text('Choose PDF'),
                 style: OutlinedButton.styleFrom(
@@ -183,12 +246,22 @@ class _CreateCvPageState extends State<CreateCvPage> {
               ),
             ],
           ),
+          if (_error != null) ...[
+            const SizedBox(height: 16),
+            Text(
+              _error!,
+              style: const TextStyle(
+                color: AppColors.accentGap,
+                fontSize: 13,
+              ),
+            ),
+          ],
           const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,
             height: 48,
             child: ElevatedButton(
-              onPressed: () => setState(() => _showResults = true),
+              onPressed: _loading ? null : _submit,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primaryButtonFill,
                 foregroundColor: AppColors.textOnLight,
@@ -197,7 +270,16 @@ class _CreateCvPageState extends State<CreateCvPage> {
                   borderRadius: BorderRadius.circular(AppRadii.pillButton),
                 ),
               ),
-              child: const Text('OK', style: AppTextStyles.buttonDark),
+              child: _loading
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: AppColors.textOnLight,
+                      ),
+                    )
+                  : const Text('OK', style: AppTextStyles.buttonDark),
             ),
           ),
         ],
@@ -212,70 +294,55 @@ class _CreateCvPageState extends State<CreateCvPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Expanded(
-                child: Text('Key requirements',
-                    style: AppTextStyles.sectionHeading),
-              ),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: _colorFor(_overallMatch).withOpacity(0.18),
-                  borderRadius: BorderRadius.circular(AppRadii.chip),
-                  border: Border.all(color: _colorFor(_overallMatch)),
-                ),
-                child: Text(
-                  '$_overallMatch% match',
-                  style: TextStyle(
-                    color: _colorFor(_overallMatch),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
+          const Text('Key requirements', style: AppTextStyles.sectionHeading),
+          const SizedBox(height: 14),
+          for (final r in _requirements)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.only(top: 6, right: 10),
+                    child: CircleAvatar(
+                      radius: 3,
+                      backgroundColor: AppColors.accentInfo,
+                    ),
                   ),
-                ),
+                  Expanded(child: Text(r, style: AppTextStyles.body)),
+                ],
               ),
-            ],
+            ),
+          const SizedBox(height: 10),
+          const Divider(color: AppColors.cardBorder),
+          const SizedBox(height: 14),
+          const Text(
+            'Want to create a CV tailored to these requirements?',
+            style: AppTextStyles.sectionHeading,
           ),
-          const SizedBox(height: 16),
-          for (final r in _requirements) ...[
-            Row(
-              children: [
-                Expanded(
-                  child: Text(r.name, style: AppTextStyles.body),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: ElevatedButton(
+              // Not implemented yet.
+              onPressed: () {},
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryButtonFill,
+                foregroundColor: AppColors.textOnLight,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppRadii.pillButton),
                 ),
-                Text(
-                  '${r.match}%',
-                  style: TextStyle(
-                    color: _colorFor(r.match),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: LinearProgressIndicator(
-                value: r.match / 100,
-                minHeight: 8,
-                backgroundColor: AppColors.cardBorder,
-                valueColor: AlwaysStoppedAnimation(_colorFor(r.match)),
               ),
+              child: const Text('Create tailored CV',
+                  style: AppTextStyles.buttonDark),
             ),
-            const SizedBox(height: 14),
-          ],
+          ),
         ],
       ),
     );
   }
-}
-
-class _Requirement {
-  final String name;
-  final int match;
-  const _Requirement(this.name, this.match);
 }
 
 /// Placeholder drawer styled with the app tokens.

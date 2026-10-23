@@ -1,12 +1,13 @@
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class ApiConfig {
   ApiConfig._();
 
-  static const String baseUrl = String.fromEnvironment(
-    'API_BASE_URL',
-    defaultValue: 'http://10.239.247.186:3000',
-  );
+  static String get baseUrl =>
+      dotenv.env['API_BASE_URL'] ?? 'http://localhost:3000';
+  static String get supabaseUrl => dotenv.env['SUPABASE_URL'] ?? '';
+  static String get supabaseAnonKey => dotenv.env['SUPABASE_ANON_KEY'] ?? '';
 
-  /// TEMP: id of the logged-in user (public."User".id).
+  /// TEMP: no longer sent to the backend. Kept so old references still compile.
   static int currentUserId = 1;
 }
