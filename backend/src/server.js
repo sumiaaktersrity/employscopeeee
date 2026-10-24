@@ -21,6 +21,9 @@ app.use('/api/templates', require('./routes/templates'));
    const jobRequirements = require('./createcv');
    app.use('/api/job', jobRequirements);
 
+const generateCv = require('./generatecv');
+app.use('/api/cvgen', generateCv);
+
 
 // ============================================================
 // PROFILE (Pre Saved Information) - paste into server.js
@@ -137,6 +140,7 @@ app.put('/api/profile', requireUser, async (req, res, next) => {
     const b = req.body || {};
     const update = {};
 
+    if ('name' in b) update.name = str(b.name, 200);
     if ('bio' in b) update.bio = str(b.bio, 2000);
     if ('address' in b) update.address = str(b.address, 500);
 

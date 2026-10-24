@@ -1,18 +1,20 @@
 import 'dart:convert';
+import 'package:employscope/config/api_config.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:file_picker/file_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
+
 import 'app_theme.dart';
 
-
-// Physical phone over USB -> localhost + `adb reverse tcp:3000 tcp:3000`
-const String baseUrl = 'http://10.239.247.186:3000';
-const String devUserId = '1'; // replace when real auth exists
-
-Map<String, String> authHeaders() => {
-      'Content-Type': 'application/json',
-      'x-user-id': devUserId,
-    };
+/// Bearer token from the current Supabase session (what requireUser expects).
+Map<String, String> authHeaders() {
+  final token = Supabase.instance.client.auth.currentSession?.accessToken;
+  if (token == null) {
+    throw Exception('You are not logged in. Please log in again.');
+  }
+  return {'Authorization': 'Bearer $token'};
+}
 
 class TemplateModel {
   final int id;
@@ -29,7 +31,9 @@ class TemplateModel {
 }
 
 class Saved extends StatefulWidget {
-  const Saved({super.key});
+  /// When true, tapping a template closes the screen and returns it.
+  final bool pickMode;
+  const Saved({super.key, this.pickMode = false});
 
   @override
   State<Saved> createState() => _SavedState();
@@ -46,7 +50,8 @@ class _SavedState extends State<Saved> {
 
   // ---------- API calls ----------
 
-  Uri _u([String path = '']) => Uri.parse('$baseUrl/api/templates$path');
+  Uri _u([String path = '']) =>
+      Uri.parse('${ApiConfig.baseUrl}/api/templates$path');
 
   String _err(http.Response r) {
     try {
@@ -67,7 +72,7 @@ class _SavedState extends State<Saved> {
   Future<void> _createTemplate(String name, PlatformFile file) async {
     final bytes = await file.readAsBytes(); // file_picker 12+: no withData
     final req = http.MultipartRequest('POST', _u())
-      ..headers['x-user-id'] = devUserId // no Content-Type: http sets it
+      ..headers.addAll(authHeaders()) // no Content-Type: http sets it
       ..fields['name'] = name
       ..files.add(http.MultipartFile.fromBytes('file', bytes,
           filename: file.name));
@@ -124,7 +129,7 @@ class _SavedState extends State<Saved> {
         ],
       ),
     );
-   // controller.dispose();
+    // controller.dispose();
     if (name == null || name.isEmpty) return;
 
     try {
@@ -202,9 +207,12 @@ class _SavedState extends State<Saved> {
 
                 const SizedBox(height: 10),
 
-                const Padding(
+                 Padding(
                   padding: EdgeInsets.only(left: 6, bottom: 10),
-                  child: Text('Add template',
+                  child: Text(
+                      widget.pickMode
+                          ? 'Tap a template to use it, or add a new one'
+                          : 'Add template',
                       style: AppTextStyles.sectionHeading),
                 ),
 
@@ -270,7 +278,7 @@ class _SavedState extends State<Saved> {
     return InkWell(
       borderRadius: BorderRadius.circular(AppRadii.smallCard),
       onTap: () {
-        // TODO: open template
+        if (widget.pickMode) Navigator.pop(context, t);
       },
       child: Container(
         height: 80,

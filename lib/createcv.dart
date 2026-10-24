@@ -1,15 +1,16 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
+import 'package:employscope/config/api_config.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:printing/printing.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 
 import 'app_theme.dart'; // the design tokens file (AppColors, AppTextStyles, ...)
-
-// TODO: replace with your real backend URL (or the matching ApiConfig value).
-// Android emulator reaches your PC at 10.0.2.2. A real phone needs your PC's LAN IP.
-const String _backendUrl = 'http://localhost:3000';
+import 'tempatesave.dart'; // Saved (template picker), TemplateModel, authHeaders()
 
 class CreateCvPage extends StatefulWidget {
   const CreateCvPage({super.key});
@@ -77,7 +78,7 @@ class _CreateCvPageState extends State<CreateCvPage> {
 
       final request = http.MultipartRequest(
         'POST',
-        Uri.parse('$_backendUrl/api/job/requirements'),
+        Uri.parse('${ApiConfig.baseUrl}/api/job/requirements'),
       )..headers['Authorization'] = 'Bearer $token';
 
       if (text.isNotEmpty) request.fields['jobText'] = text;
@@ -325,8 +326,13 @@ class _CreateCvPageState extends State<CreateCvPage> {
             width: double.infinity,
             height: 48,
             child: ElevatedButton(
-              // Not implemented yet.
-              onPressed: () {},
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) =>
+                      _TickRequirementsPage(requirements: _requirements),
+                ),
+              ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primaryButtonFill,
                 foregroundColor: AppColors.textOnLight,
@@ -340,6 +346,282 @@ class _CreateCvPageState extends State<CreateCvPage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Page 2: tick the requirements you fulfil -> Next -> pick template ->
+/// generate -> preview.
+class _TickRequirementsPage extends StatefulWidget {
+  final List<String> requirements;
+  const _TickRequirementsPage({required this.requirements});
+
+  @override
+  State<_TickRequirementsPage> createState() => _TickRequirementsPageState();
+}
+
+class _TickRequirementsPageState extends State<_TickRequirementsPage> {
+  late final List<bool> _ticked =
+      List<bool>.filled(widget.requirements.length, false);
+  bool _generating = false;
+
+  bool get _anyTicked => _ticked.any((t) => t);
+
+  void _snack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  /// Opens Saved Templates in pick mode; a tapped card comes back here.
+  Future<void> _next() async {
+    final tpl = await Navigator.push<TemplateModel>(
+      context,
+      MaterialPageRoute(builder: (_) => const Saved(pickMode: true)),
+    );
+    if (tpl == null || !mounted) return;
+    await _generate(tpl);
+  }
+
+  Future<void> _generate(TemplateModel tpl) async {
+    setState(() => _generating = true);
+    Uint8List? pdf;
+    try {
+      final res = await http
+          .post(
+            Uri.parse('${ApiConfig.baseUrl}/api/cvgen'),
+            headers: {...authHeaders(), 'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'requirements': [
+                for (var i = 0; i < widget.requirements.length; i++)
+                  if (_ticked[i]) widget.requirements[i]
+              ],
+              'templateId': tpl.id,
+            }),
+          )
+          .timeout(const Duration(seconds: 90));
+
+      if (res.statusCode != 200) {
+        var msg = 'Server error (${res.statusCode})';
+        try {
+          final b = jsonDecode(res.body);
+          if (b is Map && b['error'] != null) msg = b['error'].toString();
+        } catch (_) {}
+        throw msg;
+      }
+      pdf = res.bodyBytes;
+    } on TimeoutException {
+      _snack('That took too long. Please try again.');
+    } catch (e) {
+      _snack(e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _generating = false);
+    }
+
+    if (pdf == null || !mounted) return;
+
+    // Preview page returns true when the user taps Back (try another template).
+    final again = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => _CvPreviewPage(pdf: pdf!)),
+    );
+    if (again == true && mounted) await _next();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: !_generating,
+      child: Scaffold(
+        extendBodyBehindAppBar: true,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          iconTheme: const IconThemeData(color: Colors.white),
+          centerTitle: true,
+          title: Text('EmployScope', style: AppTextStyles.logo),
+        ),
+        body: Stack(
+          children: [
+            Container(
+              width: double.infinity,
+              height: double.infinity,
+              decoration:
+                  const BoxDecoration(gradient: AppColors.screenGradient),
+              child: SafeArea(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(20),
+                    decoration: AppDecorations.card(),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Tick all the requirements you fulfil',
+                            style: AppTextStyles.sectionHeading),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Only the ticked ones are used to tailor your CV.',
+                          style: AppTextStyles.caption,
+                        ),
+                        const SizedBox(height: 12),
+                        for (var i = 0; i < widget.requirements.length; i++)
+                          CheckboxListTile(
+                            value: _ticked[i],
+                            onChanged: (v) =>
+                                setState(() => _ticked[i] = v ?? false),
+                            controlAffinity: ListTileControlAffinity.leading,
+                            contentPadding: EdgeInsets.zero,
+                            dense: true,
+                            activeColor: AppColors.accentGood,
+                            checkColor: AppColors.textOnLight,
+                            side: const BorderSide(
+                                color: AppColors.textSecondary, width: 1.5),
+                            title: Text(widget.requirements[i],
+                                style: AppTextStyles.body),
+                          ),
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 48,
+                          child: ElevatedButton(
+                            onPressed: _anyTicked && !_generating ? _next : null,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primaryButtonFill,
+                              foregroundColor: AppColors.textOnLight,
+                              disabledBackgroundColor: Colors.white24,
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius:
+                                    BorderRadius.circular(AppRadii.pillButton),
+                              ),
+                            ),
+                            child: const Text('Next',
+                                style: AppTextStyles.buttonDark),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            if (_generating)
+              Positioned.fill(
+                child: Container(
+                  color: Colors.black54,
+                  child: const Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircularProgressIndicator(color: Colors.white),
+                        SizedBox(height: 16),
+                        Text('Building your CV...',
+                            style: AppTextStyles.body),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Shows the exact PDF the server built. Approve = share/save it.
+/// Back pops with `true` so the previous page reopens the template picker.
+class _CvPreviewPage extends StatelessWidget {
+  final Uint8List pdf;
+  const _CvPreviewPage({required this.pdf});
+
+  Future<void> _approve(BuildContext context) async {
+    try {
+      await Printing.sharePdf(bytes: pdf, filename: 'cv.pdf');
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not save the PDF.')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.bgTop,
+      appBar: AppBar(
+        backgroundColor: AppColors.bgTop,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+        centerTitle: true,
+        title: Text('EmployScope', style: AppTextStyles.logo),
+      ),
+      body: Container(
+        decoration: const BoxDecoration(gradient: AppColors.screenGradient),
+        child: SafeArea(
+          child: Column(
+            children: [
+              Expanded(
+                child: PdfPreview(
+                  build: (_) async => pdf,
+                  useActions: false,
+                  canChangePageFormat: false,
+                  canChangeOrientation: false,
+                  canDebug: false,
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: 48,
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(context, true),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(
+                                color: AppColors.secondaryButtonBorder,
+                                width: 1.5),
+                            shape: RoundedRectangleBorder(
+                              borderRadius:
+                                  BorderRadius.circular(AppRadii.pillButton),
+                            ),
+                          ),
+                          child: const Text('Back',
+                              style: AppTextStyles.buttonLight),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: SizedBox(
+                        height: 48,
+                        child: ElevatedButton(
+                          onPressed: () => _approve(context),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primaryButtonFill,
+                            foregroundColor: AppColors.textOnLight,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius:
+                                  BorderRadius.circular(AppRadii.pillButton),
+                            ),
+                          ),
+                          child: const Text('Approve',
+                              style: AppTextStyles.buttonDark),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

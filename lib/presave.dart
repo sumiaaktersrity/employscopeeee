@@ -79,6 +79,7 @@ class PresavePage extends StatefulWidget {
 class _PresavePageState extends State<PresavePage> {
   // Which section is currently being edited. Nothing is editable until the
   // pencil on that section is pressed.
+  bool _editName = false;
   bool _editPhoto = false;
   bool _editBio = false;
   bool _editEdu = false;
@@ -90,6 +91,7 @@ class _PresavePageState extends State<PresavePage> {
 
   Uint8List? _photoBytes; // newly picked photo, uploaded when Save is pressed
 
+  final _name = TextEditingController();
   final _bio = TextEditingController();
   final _address = TextEditingController();
 
@@ -108,6 +110,7 @@ class _PresavePageState extends State<PresavePage> {
   void dispose() {
     _bio.dispose();
     _address.dispose();
+    _name.dispose();
     for (final e in _edu) {
       e.dispose();
     }
@@ -175,6 +178,7 @@ class _PresavePageState extends State<PresavePage> {
   void _applyProfile(Map<String, dynamic> d) {
     _bio.text = (d['bio'] ?? '').toString();
     _address.text = (d['address'] ?? '').toString();
+    _name.text = (d['name'] ?? '').toString();
     _accountEmail = (d['email'] ?? '').toString();
     _photoUrl = d['photoUrl']?.toString();
     _photoBytes = null;
@@ -330,7 +334,7 @@ class _PresavePageState extends State<PresavePage> {
 
     // Close every section first so empty entries are cleaned up.
     setState(() {
-      _editPhoto = _editBio = _editAddress = false;
+      _editName = _editPhoto = _editBio = _editAddress = false;
       _editEdu = _editContact = _editSkills = _editExp = _editPart = false;
       _pruneEdu();
       _pruneContacts();
@@ -341,6 +345,7 @@ class _PresavePageState extends State<PresavePage> {
     });
 
     final body = <String, dynamic>{
+      'name': _name.text.trim(),
       'bio': _bio.text.trim(),
       'address': _address.text.trim(),
       'education': [
@@ -451,6 +456,7 @@ class _PresavePageState extends State<PresavePage> {
                   style: AppTextStyles.caption,
                 ),
                 const SizedBox(height: 18),
+                _namePane(),
                 _photoPane(),
                 _bioPane(),
                 _educationPane(),
@@ -625,6 +631,19 @@ class _PresavePageState extends State<PresavePage> {
       tooltip: 'Remove',
       icon: const Icon(Icons.close, size: 18, color: AppColors.accentGap),
       onPressed: onPressed,
+    );
+  }
+
+  // ---------------------------------------------------------------- name
+
+  Widget _namePane() {
+    return _pane(
+      title: 'Name',
+      editing: _editName,
+      onToggle: () => setState(() => _editName = !_editName),
+      child: _editName
+          ? _input(_name, 'Full name (shown at the top of your CV)')
+          : _viewText(_name.text, 'No name yet'),
     );
   }
 
