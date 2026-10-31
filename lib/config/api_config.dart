@@ -4,7 +4,7 @@ class ApiConfig {
   ApiConfig._();
 
   static String get baseUrl =>
-      dotenv.env['API_BASE_URL'] ?? 'http://localhost:3000';
+      dotenv.env['API_BASE_URL'] ?? 'http://10.114.157.186:3000';
   static String get supabaseUrl => dotenv.env['SUPABASE_URL'] ?? '';
   static String get supabaseAnonKey => dotenv.env['SUPABASE_ANON_KEY'] ?? '';
 

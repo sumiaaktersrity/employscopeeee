@@ -6,6 +6,8 @@
 // How it works (one Gemini call):
 //  - Gemini LOOKS at the saved template image and returns a style (colors, font, header look)
 //  - the same call picks the presaved skills / experiences / participations that fit the ticked requirements
+//  - the same call sorts every ticked requirement into skill / experience / participation,
+//    and the server adds it to that CV section (the section appears if it was empty)
 //  - pdfkit draws the CV from that style + the profile data
 
 require('dotenv').config();
@@ -83,10 +85,11 @@ async function loadImage(url) {
 function buildPrompt(profile, requirements) {
   return `You build a CV for one target job from a candidate's saved profile.
 
-Do two things.
+Do three things.
 
 1) STYLE: look at the attached CV template image and describe its look.
-2) CONTENT: pick what best proves the ticked job requirements.
+2) CONTENT: pick the saved items that best prove the ticked job requirements.
+3) TICKED: the candidate confirmed they fulfil EVERY ticked requirement. Decide where each one goes on the CV.
 
 STRICT RULES
 - Never invent facts, skills, employers, dates or numbers.
@@ -94,19 +97,61 @@ STRICT RULES
 - "experiences" and "participations": choose by index from the lists, most relevant first.
   "text" may only tighten the wording of that same line (fix grammar, cut filler, lead with the
   relevant skills). It must keep every fact from the original line.
-- At most 5 experiences and 3 participations.
+- At most 5 experiences and 3 participations picked from the saved lists.
 - Colors are 6-digit hex like #1f3a5f. "font" is one of: Helvetica, Times-Roman, Courier.
 - "headerStyle" is one of: banner (name on a colored band), centered, plain.
 - "headingStyle" is one of: underline, bar, plain.
+
+TICKED RULES (read carefully, this decides which CV section each line lands in)
+Give one entry per ticked requirement. "index" = its position in TICKED REQUIREMENTS.
+The word "experience" in a requirement does NOT make it an experience. Job posts write
+"Experience with Docker" or "Knowledge of REST APIs" for tools and abilities, and those are SKILLS.
+
+For each requirement ask these questions IN THIS ORDER and stop at the first YES:
+ Q1. Is it a degree, certification, license, location, visa, salary, age or language-level requirement?
+     -> type "none"
+ Q2. Do the saved skills, or a saved experience/participation you picked, already show it?
+     -> type "covered"
+ Q3. Is it an activity OUTSIDE paid work: club, society, event, volunteering, competition, hackathon,
+     open-source contribution, community or personal project?
+     -> type "participation"
+ Q4. Is it a LENGTH OF TIME or a described kind of PAST WORK: "3+ years of ...", "has led a team",
+     "has shipped apps to production", "managed a budget", "worked in a startup"?
+     -> type "experience"
+ Q5. Anything else: a tool, technology, framework, library, language, platform, methodology, practice,
+     or soft skill, even when written as "experience with X", "knowledge of X", "proficiency in X",
+     "familiarity with X" or "ability to X".
+     -> type "skill"   (this is the most common answer)
+
+"text":
+ - skill: the bare name only, max 5 words, no filler. Strip "experience with / knowledge of / proficiency
+   in / familiarity with / strong". Example: "Experience using Flutter BLoC pattern" -> "Flutter BLoC".
+ - experience or participation: ONE line that states only what the requirement says. No employers,
+   dates, numbers or tools that are not in the requirement.
+ - covered and none: empty string.
+
+EXAMPLES
+ "Experience using Flutter BLoC design pattern"       -> skill, "Flutter BLoC"
+ "Experience with GitHub and JIRA"                     -> skill, "GitHub, JIRA"
+ "Experience in SCRUM and Agile methodologies"         -> skill, "Agile / Scrum"
+ "Strong communication skills"                         -> skill, "Communication"
+ "Experience working in a distributed/remote team"     -> skill, "Remote teamwork"
+ "3+ years of mobile app development"                  -> experience, "3+ years of mobile app development"
+ "Has led a small engineering team"                    -> experience, "Led a small engineering team"
+ "Shipped apps to the App Store and Google Play"       -> experience, "Shipped apps to the App Store and Google Play"
+ "Contributions to open-source Flutter projects"       -> participation, "Contributed to open-source Flutter projects"
+ "Active in tech communities or hackathons"            -> participation, "Active in tech communities and hackathons"
+ "Bachelor's degree in Computer Science"               -> none, ""
 
 Reply with JSON only, exactly this shape:
 {"style":{"font":"Helvetica","background":"#ffffff","text":"#222222","accent":"#1f3a5f","headerStyle":"banner","headingStyle":"underline"},
  "skills":["..."],
  "experiences":[{"index":0,"text":"..."}],
- "participations":[{"index":0,"text":"..."}]}
+ "participations":[{"index":0,"text":"..."}],
+ "ticked":[{"index":0,"type":"skill","text":"..."}]}
 
 TICKED REQUIREMENTS:
-${JSON.stringify(requirements)}
+${JSON.stringify(requirements.map((text, index) => ({ index, text })))}
 
 CANDIDATE SKILLS:
 ${JSON.stringify(profile.skills)}
@@ -123,7 +168,7 @@ async function callGemini(prompt, img) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
   const body = {
     contents: [{ parts: [{ text: prompt }, { inlineData: { mimeType: img.mime, data: img.b64 } }] }],
-    generationConfig: { responseMimeType: 'application/json', temperature: 0.2 },
+    generationConfig: { responseMimeType: 'application/json', temperature: 0 },
   };
 
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -189,6 +234,20 @@ function pickLines(items, source, max) {
     used.add(i);
     out.push(str(it.text, 2000) || source[i]);
     if (out.length >= max) break;
+  }
+  return out;
+}
+
+// Add `extra` lines after `base`, skipping case-insensitive duplicates.
+function mergeUnique(base, extra) {
+  const seen = new Set(base.map((x) => x.toLowerCase()));
+  const out = [...base];
+  for (const x of extra) {
+    const k = x.toLowerCase();
+    if (!seen.has(k)) {
+      seen.add(k);
+      out.push(x);
+    }
   }
   return out;
 }
@@ -265,6 +324,8 @@ function renderPdf(p, st) {
       para(p.bio);
     }
     // ----- requirement-relevant skills + experience -----
+    // A section is drawn only if it has items, so a section that was empty in
+    // Pre Saved Information appears as soon as a ticked requirement lands in it.
     if (p.skills.length) {
       section('Skills');
       para(p.skills.join('   |   '));
@@ -318,16 +379,32 @@ router.post('/', requireUser, async (req, res, next) => {
     const [profile, img] = await Promise.all([loadProfile(req), loadImage(tpl.previewUrl)]);
     const ai = await callGemini(buildPrompt(profile, requirements), img);
 
-    // Skills must come from the user's own list (case-insensitive).
+    // Saved skills Gemini picked (must come from the user's own list).
     const byLower = new Map(profile.skills.map((s) => [s.toLowerCase(), s]));
     let skills = (Array.isArray(ai.skills) ? ai.skills : [])
       .map((s) => byLower.get(String(s).trim().toLowerCase()))
       .filter(Boolean);
     skills = [...new Set(skills)];
-    if (!skills.length) skills = profile.skills;
 
-    const experiences = pickLines(ai.experiences, profile.experiences, 5);
-    const participations = pickLines(ai.participations, profile.participations, 3);
+    // Ticked requirements Gemini sorted into skill / experience / participation.
+    const addedSkills = [];
+    const addedExp = [];
+    const addedPart = [];
+    for (const t of Array.isArray(ai.ticked) ? ai.ticked : []) {
+      const i = Number(t?.index);
+      if (!Number.isInteger(i) || i < 0 || i >= requirements.length) continue;
+      const type = String(t.type || '').trim().toLowerCase();
+      const text = str(t.text, type === 'skill' ? 80 : 300);
+      if (!text) continue;
+      if (type === 'skill') addedSkills.push(text);
+      else if (type === 'experience') addedExp.push(text);
+      else if (type === 'participation') addedPart.push(text);
+    }
+
+    skills = mergeUnique(skills, addedSkills);
+    if (!skills.length) skills = profile.skills;
+    const experiences = mergeUnique(pickLines(ai.experiences, profile.experiences, 5), addedExp);
+    const participations = mergeUnique(pickLines(ai.participations, profile.participations, 3), addedPart);
 
     const pdf = await renderPdf(
       {

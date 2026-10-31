@@ -256,7 +256,7 @@ app.use((err, _req, res, _next) => {
 
 const port = process.env.PORT || 3000;
 app.listen(port, '0.0.0.0', async () => {
-  console.log(`EmployScope API on http://localhost:${port}`);
+  console.log(`EmployScope API on http://10.114.157.186:${port}`);
   // Make sure the storage bucket exists (no-op if it already does).
   const { error } = await supabase.storage.createBucket(BUCKET, { public: false });
   if (error && !/already exists/i.test(error.message)) console.warn('Bucket check:', error.message);
