@@ -11,4 +11,16 @@ class JobService {
         .map((e) => JobModel.fromJson(Map<String, dynamic>.from(e)))
         .toList();
   }
+
+  /// Week 10: the user's targeted (bookmarked) jobs.
+  Future<List<JobModel>> listSaved() async {
+    final res = await ApiClient.dio.get('/api/jobs/saved');
+    return (res.data['jobs'] as List)
+        .map((e) => JobModel.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+  }
+
+  Future<void> saveJob(int id) => ApiClient.dio.post('/api/jobs/$id/save');
+
+  Future<void> unsaveJob(int id) => ApiClient.dio.delete('/api/jobs/$id/save');
 }

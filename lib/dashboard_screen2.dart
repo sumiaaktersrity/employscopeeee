@@ -30,6 +30,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   CvAnalysis? _analysis;
   List<JobModel> _matchedJobs = [];
   List<JobModel> _postedJobs = [];
+  List<JobModel> _savedJobs = []; // Week 10: targeted jobs
 
   bool get _hasAnalysis => _analysis != null;
 
@@ -54,6 +55,53 @@ class _DashboardScreenState extends State<DashboardScreen> {
         }
       });
     } catch (e) {
+      _toast(ApiClient.messageFrom(e));
+    }
+    await _loadSaved();
+  }
+
+  /// Week 10: kept separate so a failure here never affects Weeks 5-9 data.
+  Future<void> _loadSaved() async {
+    try {
+      final saved = await _jobService.listSaved();
+      if (!mounted) return;
+      setState(() => _savedJobs = saved);
+    } catch (e) {
+      _toast(ApiClient.messageFrom(e));
+    }
+  }
+
+  /// Week 10: bookmark / un-bookmark a job (optimistic, reverts on error).
+  Future<void> _toggleSave(JobListing l) async {
+    final id = l.id;
+    if (id == null) return;
+    final previous = List<JobModel>.from(_savedJobs);
+    final wasSaved = previous.any((j) => j.id == id);
+
+    if (!wasSaved) {
+      final src = [..._matchedJobs, ..._postedJobs].where((j) => j.id == id);
+      if (src.isEmpty) return;
+      final j = src.first;
+      setState(() => _savedJobs = [
+            JobModel(
+                id: j.id,
+                title: j.title,
+                company: j.company,
+                location: j.location),
+            ...previous,
+          ]);
+    } else {
+      setState(() => _savedJobs = previous.where((j) => j.id != id).toList());
+    }
+
+    try {
+      if (wasSaved) {
+        await _jobService.unsaveJob(id);
+      } else {
+        await _jobService.saveJob(id);
+      }
+    } catch (e) {
+      if (mounted) setState(() => _savedJobs = previous);
       _toast(ApiClient.messageFrom(e));
     }
   }
@@ -114,6 +162,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final analysis = _analysis;
+    final savedIds = _savedJobs.map((j) => j.id).toSet();
 
     return Scaffold(
       backgroundColor: AppColors.bgTop,
@@ -166,8 +215,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         MatchedJobsSection(
                           title: _hasAnalysis ? 'Matched Jobs' : 'Posted Jobs',
                           onSeeAll: () {},
+                          onToggleSave: _toggleSave,
                           jobs: (_hasAnalysis ? _matchedJobs : _postedJobs)
-                              .map((j) => j.toListing())
+                              .map((j) =>
+                                  j.toListing(isSaved: savedIds.contains(j.id)))
+                              .toList(),
+                        ),
+
+                        const SizedBox(height: 20),
+
+                        // 4. Targeted jobs (Week 10)
+                        MatchedJobsSection(
+                          title: 'Targeted Jobs',
+                          emptyText:
+                              'No targeted jobs yet. Tap the bookmark on any job to save it here.',
+                          onToggleSave: _toggleSave,
+                          jobs: _savedJobs
+                              .map((j) => j.toListing(isSaved: true))
                               .toList(),
                         ),
                       ],

@@ -66,4 +66,26 @@ async function deleteJob(id) {
   if (error) throw error;
 }
 
-module.exports = { listJobs, getJob, createJob, updateJob, deleteJob };
+/* ---- Week 10: targeted (saved) jobs ---- */
+async function listSavedJobs(userId) {
+  const { data, error } = await supabase.from('SavedJob')
+    .select('created_at, JobPost(*, JobSkill(*))')
+    .eq('userId', userId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data.filter((r) => r.JobPost).map((r) => formatJob(r.JobPost));
+}
+
+async function saveJob(userId, jobId) {
+  const { error } = await supabase.from('SavedJob')
+    .upsert({ userId, jobId }, { onConflict: 'userId,jobId', ignoreDuplicates: true });
+  if (error) throw error;
+}
+
+async function unsaveJob(userId, jobId) {
+  const { error } = await supabase.from('SavedJob')
+    .delete().eq('userId', userId).eq('jobId', jobId);
+  if (error) throw error;
+}
+
+module.exports = { listJobs, getJob, createJob, updateJob, deleteJob, listSavedJobs, saveJob, unsaveJob };

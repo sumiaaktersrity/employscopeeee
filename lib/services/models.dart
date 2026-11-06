@@ -70,7 +70,9 @@ class JobModel {
       );
 
   /// Feeds the existing MatchedJobsSection widget unchanged.
-  JobListing toListing() => JobListing(
+  JobListing toListing({bool isSaved = false}) => JobListing(
+        id: id,
+        isSaved: isSaved,
         title: title,
         company: company,
         location: location,

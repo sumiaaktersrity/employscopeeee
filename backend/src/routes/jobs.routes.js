@@ -18,6 +18,24 @@ router.get('/matched', wrap(async (req, res) => {
   res.json({ cvId: cv.id, jobs: await cvSvc.matchedJobsFor(cv) });
 }));
 
+// GET /api/jobs/saved                  -> the user's targeted (bookmarked) jobs
+router.get('/saved', wrap(async (req, res) => {
+  res.json({ jobs: await jobs.listSavedJobs(req.userId) });
+}));
+
+// POST /api/jobs/:id/save   /  DELETE /api/jobs/:id/save   (any logged-in user)
+router.post('/:id/save', wrap(async (req, res) => {
+  const job = await jobs.getJob(req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  await jobs.saveJob(req.userId, job.id);
+  res.status(201).json({ saved: true, jobId: job.id });
+}));
+
+router.delete('/:id/save', wrap(async (req, res) => {
+  await jobs.unsaveJob(req.userId, req.params.id);
+  res.json({ saved: false, jobId: Number(req.params.id) });
+}));
+
 router.get('/:id', wrap(async (req, res) => {
   const job = await jobs.getJob(req.params.id);
   if (!job) return res.status(404).json({ error: 'Job not found' });

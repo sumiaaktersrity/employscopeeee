@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
 class JobListing {
+  final int? id;
+  final bool isSaved; // Week 10: is this job in the user's targeted list?
   final String title;
   final String company;
   final String location;
@@ -9,6 +11,8 @@ class JobListing {
   final bool showMatch;
 
   const JobListing({
+    this.id,
+    this.isSaved = false,
     required this.title,
     required this.company,
     required this.location,
@@ -25,6 +29,8 @@ class MatchedJobsSection extends StatelessWidget {
   final List<JobListing> jobs;
   final void Function(JobListing)? onTapJob;
   final VoidCallback? onSeeAll;
+  final void Function(JobListing)? onToggleSave; // shows a bookmark button
+  final String? emptyText;
 
   const MatchedJobsSection({
     super.key,
@@ -32,6 +38,8 @@ class MatchedJobsSection extends StatelessWidget {
     required this.jobs,
     this.onTapJob,
     this.onSeeAll,
+    this.onToggleSave,
+    this.emptyText,
   });
 
   @override
@@ -70,10 +78,11 @@ class MatchedJobsSection extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           if (jobs.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
               child: Text(
-                'No jobs to show yet. Upload and analyze your CV to see matches.',
+                emptyText ??
+                    'No jobs to show yet. Upload and analyze your CV to see matches.',
                 style: AppTextStyles.body,
               ),
             )
@@ -81,7 +90,13 @@ class MatchedJobsSection extends StatelessWidget {
             Column(
               children: [
                 for (int i = 0; i < jobs.length; i++) ...[
-                  _JobTile(job: jobs[i], onTap: () => onTapJob?.call(jobs[i])),
+                  _JobTile(
+                    job: jobs[i],
+                    onTap: () => onTapJob?.call(jobs[i]),
+                    onToggleSave: onToggleSave == null
+                        ? null
+                        : () => onToggleSave!(jobs[i]),
+                  ),
                   if (i != jobs.length - 1)
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 10),
@@ -99,7 +114,8 @@ class MatchedJobsSection extends StatelessWidget {
 class _JobTile extends StatelessWidget {
   final JobListing job;
   final VoidCallback onTap;
-  const _JobTile({required this.job, required this.onTap});
+  final VoidCallback? onToggleSave;
+  const _JobTile({required this.job, required this.onTap, this.onToggleSave});
 
   Color get _matchColor {
     if (job.matchPercent >= 75) return AppColors.accentGood;
@@ -167,9 +183,23 @@ class _JobTile extends StatelessWidget {
                   ),
                 ),
               ),
-            ] else
+            ] else if (onToggleSave == null)
               const Icon(Icons.chevron_right,
                   color: AppColors.textSecondary, size: 20),
+            if (onToggleSave != null)
+              IconButton(
+                onPressed: onToggleSave,
+                tooltip: job.isSaved ? 'Remove from targeted jobs' : 'Target this job',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                icon: Icon(
+                  job.isSaved ? Icons.bookmark : Icons.bookmark_border,
+                  color: job.isSaved
+                      ? AppColors.accentInfo
+                      : AppColors.textSecondary,
+                  size: 22,
+                ),
+              ),
           ],
         ),
       ),
