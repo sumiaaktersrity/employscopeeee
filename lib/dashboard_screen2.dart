@@ -106,6 +106,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  /// Week 11: skill gap + recommendations for a targeted job (bottom sheet).
+  void _showSkillGap(JobListing l) {
+    final id = l.id;
+    if (id == null) return;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _SkillGapSheet(
+        title: l.title,
+        company: l.company,
+        future: _jobService.skillGap(id),
+      ),
+    );
+  }
+
   void _toast(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
@@ -230,6 +246,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           emptyText:
                               'No targeted jobs yet. Tap the bookmark on any job to save it here.',
                           onToggleSave: _toggleSave,
+                          onTapJob: _showSkillGap,
                           jobs: _savedJobs
                               .map((j) => j.toListing(isSaved: true))
                               .toList(),
@@ -318,6 +335,166 @@ class _DrawerItem extends StatelessWidget {
               style: AppTextStyles.body.copyWith(color: AppColors.textPrimary)),
         ],
       ),
+    );
+  }
+}
+
+/// Week 11: bottom sheet showing skill gap + learning recommendations.
+class _SkillGapSheet extends StatelessWidget {
+  final String title;
+  final String company;
+  final Future<SkillGap> future;
+  const _SkillGapSheet(
+      {required this.title, required this.company, required this.future});
+
+  Color _color(int p) => p >= 75
+      ? AppColors.accentGood
+      : p >= 45
+          ? AppColors.accentWarn
+          : AppColors.accentGap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints:
+          BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.85),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+        decoration: const BoxDecoration(
+          color: AppColors.drawerFill,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.cardBorder,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text('Skill Gap & Recommendations',
+                  style: AppTextStyles.sectionHeading),
+              const SizedBox(height: 4),
+              Text('$title · $company', style: AppTextStyles.body),
+              const SizedBox(height: 16),
+              FutureBuilder<SkillGap>(
+                future: future,
+                builder: (context, snap) {
+                  if (snap.connectionState != ConnectionState.done) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 32),
+                      child: Center(child: CircularProgressIndicator()),
+                    );
+                  }
+                  if (snap.hasError) {
+                    return Text(ApiClient.messageFrom(snap.error!),
+                        style: AppTextStyles.body
+                            .copyWith(color: AppColors.accentGap));
+                  }
+                  return _content(snap.data!);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _heading(String t) => Padding(
+        padding: const EdgeInsets.only(top: 18, bottom: 10),
+        child: Text(t, style: AppTextStyles.sectionHeading),
+      );
+
+  Widget _chips(List<String> names, SkillTagType type) => Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: names.map((n) => SkillChip(tag: SkillTag(n, type))).toList(),
+      );
+
+  Widget _content(SkillGap g) {
+    if (g.totalSkills == 0) {
+      return const Text(
+          'This job has no listed skills to compare with your CV yet.',
+          style: AppTextStyles.body);
+    }
+    final noGap = g.missingRequired.isEmpty && g.missingOptional.isEmpty;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            ScoreRing(score: g.matchPercent, color: _color(g.matchPercent)),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                '${g.matchPercent}% skill match\nYou have ${g.matchedSkills.length} of ${g.totalSkills} skills this job lists.',
+                style: AppTextStyles.body,
+              ),
+            ),
+          ],
+        ),
+        if (g.matchedSkills.isNotEmpty) ...[
+          _heading('Skills you have'),
+          _chips(g.matchedSkills, SkillTagType.matched),
+        ],
+        if (g.missingRequired.isNotEmpty) ...[
+          _heading('Required skills you are missing'),
+          _chips(g.missingRequired, SkillTagType.missing),
+        ],
+        if (g.missingOptional.isNotEmpty) ...[
+          _heading('Nice-to-have skills'),
+          _chips(g.missingOptional, SkillTagType.suggested),
+        ],
+        if (noGap) ...[
+          _heading('No skill gap'),
+          const Text('Your CV covers every skill this job lists. Great match!',
+              style: AppTextStyles.body),
+        ],
+        if (g.recommendations.isNotEmpty) ...[
+          _heading('What to learn next'),
+          ...g.recommendations.map(
+            (r) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.arrow_right_rounded,
+                      color: AppColors.accentInfo, size: 20),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          r.required ? r.skill : '${r.skill} (nice to have)',
+                          style: AppTextStyles.body.copyWith(
+                              color: AppColors.textPrimary,
+                              fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(r.tip, style: AppTextStyles.body),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (!g.aiGenerated)
+            const Text('General tips shown (AI tips are unavailable right now).',
+                style: AppTextStyles.caption),
+        ],
+      ],
     );
   }
 }

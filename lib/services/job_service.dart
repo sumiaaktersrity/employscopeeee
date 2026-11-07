@@ -23,4 +23,10 @@ class JobService {
   Future<void> saveJob(int id) => ApiClient.dio.post('/api/jobs/$id/save');
 
   Future<void> unsaveJob(int id) => ApiClient.dio.delete('/api/jobs/$id/save');
+
+  /// Week 11: your CV skills vs one job + learning tips.
+  Future<SkillGap> skillGap(int id) async {
+    final res = await ApiClient.dio.get('/api/jobs/$id/skill-gap');
+    return SkillGap.fromJson(Map<String, dynamic>.from(res.data));
+  }
 }

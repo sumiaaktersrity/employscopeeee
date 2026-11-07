@@ -54,7 +54,7 @@ class CVAnalysisResults extends StatelessWidget {
           // Score row
           Row(
             children: [
-              _ScoreRing(score: matchScore, color: _scoreColor),
+              ScoreRing(score: matchScore, color: _scoreColor),
               const SizedBox(width: 18),
               Expanded(
                 child: Column(
@@ -86,7 +86,7 @@ class CVAnalysisResults extends StatelessWidget {
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: skills.map((s) => _SkillChip(tag: s)).toList(),
+              children: skills.map((s) => SkillChip(tag: s)).toList(),
             ),
           ],
 
@@ -125,10 +125,10 @@ class CVAnalysisResults extends StatelessWidget {
   }
 }
 
-class _ScoreRing extends StatelessWidget {
+class ScoreRing extends StatelessWidget {
   final int score;
   final Color color;
-  const _ScoreRing({required this.score, required this.color});
+  const ScoreRing({required this.score, required this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -162,9 +162,9 @@ class _ScoreRing extends StatelessWidget {
   }
 }
 
-class _SkillChip extends StatelessWidget {
+class SkillChip extends StatelessWidget {
   final SkillTag tag;
-  const _SkillChip({required this.tag});
+  const SkillChip({required this.tag});
 
   @override
   Widget build(BuildContext context) {

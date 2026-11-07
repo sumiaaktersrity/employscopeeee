@@ -2,6 +2,7 @@ const router = require('express').Router();
 const { requireUser, requireRole } = require('../middleware/auth');
 const jobs = require('../services/jobService');
 const cvSvc = require('../services/cvService');
+const { skillGap, recommendSkills } = require('../services/analysisService');
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 router.use(requireUser);
@@ -34,6 +35,21 @@ router.post('/:id/save', wrap(async (req, res) => {
 router.delete('/:id/save', wrap(async (req, res) => {
   await jobs.unsaveJob(req.userId, req.params.id);
   res.json({ saved: false, jobId: Number(req.params.id) });
+}));
+
+// GET /api/jobs/:id/skill-gap   -> Week 11: latest CV skills vs this job + learning tips
+router.get('/:id/skill-gap', wrap(async (req, res) => {
+  const job = await jobs.getJob(req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  const cv = await cvSvc.getCv(req.userId);
+  if (!cv) return res.status(404).json({ error: 'No CV found. Upload your CV on the dashboard first.' });
+  const gap = skillGap(cv.parsed?.skills || [], job);
+  const missing = [
+    ...gap.missingRequired.map((skill) => ({ skill, required: true })),
+    ...gap.missingOptional.map((skill) => ({ skill, required: false })),
+  ];
+  const { aiGenerated, recommendations } = await recommendSkills(job, missing);
+  res.json({ jobId: job.id, title: job.title, company: job.company, ...gap, recommendations, aiGenerated });
 }));
 
 router.get('/:id', wrap(async (req, res) => {

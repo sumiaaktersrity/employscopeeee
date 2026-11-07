@@ -87,3 +87,56 @@ class AnalysisBundle {
   final List<JobModel> matchedJobs;
   const AnalysisBundle(this.analysis, this.matchedJobs);
 }
+
+/// Week 11: one recommended skill with a short "how to start" tip.
+class SkillRecommendation {
+  final String skill;
+  final String tip;
+  final bool required;
+  const SkillRecommendation(
+      {required this.skill, required this.tip, required this.required});
+
+  factory SkillRecommendation.fromJson(Map<String, dynamic> j) =>
+      SkillRecommendation(
+        skill: (j['skill'] ?? '').toString(),
+        tip: (j['tip'] ?? '').toString(),
+        required: j['required'] != false,
+      );
+}
+
+/// Week 11: result of comparing the CV with one targeted job.
+class SkillGap {
+  final int matchPercent;
+  final int totalSkills;
+  final List<String> matchedSkills;
+  final List<String> missingRequired;
+  final List<String> missingOptional;
+  final List<SkillRecommendation> recommendations;
+  final bool aiGenerated;
+
+  const SkillGap({
+    required this.matchPercent,
+    required this.totalSkills,
+    required this.matchedSkills,
+    required this.missingRequired,
+    required this.missingOptional,
+    required this.recommendations,
+    required this.aiGenerated,
+  });
+
+  static List<String> _list(dynamic v) =>
+      (v as List? ?? const []).map((e) => e.toString()).toList();
+
+  factory SkillGap.fromJson(Map<String, dynamic> j) => SkillGap(
+        matchPercent: (j['matchPercent'] as num? ?? 0).toInt(),
+        totalSkills: (j['totalSkills'] as num? ?? 0).toInt(),
+        matchedSkills: _list(j['matchedSkills']),
+        missingRequired: _list(j['missingRequired']),
+        missingOptional: _list(j['missingOptional']),
+        recommendations: (j['recommendations'] as List? ?? const [])
+            .map((e) =>
+                SkillRecommendation.fromJson(Map<String, dynamic>.from(e)))
+            .toList(),
+        aiGenerated: j['aiGenerated'] == true,
+      );
+}
