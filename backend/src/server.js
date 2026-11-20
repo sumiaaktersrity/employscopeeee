@@ -3,6 +3,8 @@ const express = require('express');
 const cors = require('cors');
 const { supabase,BUCKET} = require('./config/supabase');
 
+const joboperation = require('./routes/joboperation');
+
 const app = express();
 app.use((req, res, next) => {
   console.log(new Date().toISOString(), req.method, req.url);
@@ -15,8 +17,9 @@ app.use((req, res, next) => {
   next();
 });
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
-app.use('/api/cv', require('./routes/cv.routes'));
-app.use('/api/jobs', require('./routes/jobs.routes'));
+//app.use('/api/cv', require('./routes/cv.routes'));
+app.use('/api/cv', joboperation.cv);
+app.use('/api/jobs', joboperation.jobs);
 app.use('/api/templates', require('./routes/templates'));
    const jobRequirements = require('./createcv');
    app.use('/api/job', jobRequirements);
