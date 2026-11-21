@@ -174,7 +174,7 @@ const MAX_QUERIES = 6; // one request per skill; free plan is ~200 requests/mont
 async function refreshJobsFor(cvSkills) {
   try {
     if (!process.env.JSEARCH_API_KEY || !cvSkills?.length) return 0;
-    const country = process.env.JOB_FETCH_COUNTRY || 'us';
+    const country = process.env.JOB_FETCH_COUNTRY || 'bd';
     const queries = cvSkills.slice(0, MAX_QUERIES).map((s) => `${s} jobs`);
     const todo = queries.filter((q) => {
       const last = fetchedAt.get(`${q}|${country}`);
