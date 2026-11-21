@@ -169,7 +169,7 @@ async function importJobs(found, cvSkills) {
  * Fetch from JSearch for this CV and save the matches. Never throws: if the API
  * fails or the quota is used up, analysis still runs on the jobs already in the DB.
  */
-const MAX_QUERIES = 10; // one request per skill; free plan is ~200 requests/month
+const MAX_QUERIES = 6; // one request per skill; free plan is ~200 requests/month
 
 async function refreshJobsFor(cvSkills) {
   try {
