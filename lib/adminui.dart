@@ -1,6 +1,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'services/api_client.dart';
 
 class AdminUI extends StatefulWidget {
   const AdminUI({super.key});
@@ -10,64 +11,141 @@ class AdminUI extends StatefulWidget {
 }
 
 class _AdminUIState extends State<AdminUI> {
-  // Temporary sample data. No backend connection.
-  final int totalUsers = 120;
-  final int reportsToday = 4;
-
-  final List<Map<String, String>> reports = [
-    {
-      'jobTitle': 'Junior Flutter Developer',
-      'company': 'ABC Technologies',
-      'description':
-          'We are looking for a junior Flutter developer to work on mobile application development. Candidates should have basic knowledge of Dart and Flutter.',
-      'reason':
-          'The job description appears to contain misleading information about the salary.',
-      'email': 'user1@example.com',
-      'status': 'Pending',
-    },
-    {
-      'jobTitle': 'Data Entry Operator',
-      'company': 'XYZ Solutions',
-      'description':
-          'Data entry position requiring basic computer skills and spreadsheet knowledge. Full-time position.',
-      'reason':
-          'The employer is asking applicants to pay a registration fee.',
-      'email': 'user2@example.com',
-      'status': 'Pending',
-    },
-    {
-      'jobTitle': 'Frontend Developer Intern',
-      'company': 'Tech World',
-      'description':
-          'Internship opportunity for frontend developers with knowledge of HTML, CSS and JavaScript.',
-      'reason': 'The company information seems inaccurate.',
-      'email': 'user3@example.com',
-      'status': 'Pending',
-    },
-  ];
+  List<Map<String, dynamic>> reports = [];
+  bool loading = true;
+  bool actionLoading = false;
+  String? loadError;
 
   static const Color navy = Color.fromARGB(255, 4, 27, 45);
   static const Color deepPurple = Color.fromARGB(220, 45, 49, 74);
   static const Color lavender = Color.fromARGB(255, 199, 190, 229);
   static const Color paleLavender = Color.fromARGB(195, 175, 171, 197);
 
-  void updateReport(int index, String status) {
-    setState(() {
-      reports[index]['status'] = status;
-    });
+  @override
+  void initState() {
+    super.initState();
+    fetchReports();
+  }
 
+  Future<void> fetchReports() async {
+    if (mounted) {
+      setState(() {
+        loading = true;
+        loadError = null;
+      });
+    }
+
+    try {
+      final response = await ApiClient.dio.get('/api/jobs/admin/reports');
+      final raw = response.data['reports'] as List<dynamic>? ?? [];
+
+      if (!mounted) return;
+
+      setState(() {
+        reports = raw
+            .map((r) => Map<String, dynamic>.from(r as Map))
+            .toList();
+        loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        loading = false;
+        loadError = ApiClient.messageFrom(e);
+      });
+    }
+  }
+
+  int get reportsToday {
+    final now = DateTime.now();
+
+    return reports.where((report) {
+      final raw = report['createdAt'];
+      if (raw == null) return false;
+
+      final date = DateTime.tryParse(raw.toString())?.toLocal();
+      if (date == null) return false;
+
+      return date.year == now.year &&
+          date.month == now.month &&
+          date.day == now.day;
+    }).length;
+  }
+
+  void snack(String message) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         backgroundColor: deepPurple,
         content: Text(
-          'Report marked as $status (local only).',
-          style: GoogleFonts.getFont(
-            'IBM Plex Serif',
-            color: Colors.white,
-          ),
+          message,
+          style: GoogleFonts.getFont('IBM Plex Serif', color: Colors.white),
         ),
       ),
     );
+  }
+
+  Future<void> ignoreReport(int reportId) async {
+    await performAction(
+      reportId,
+      '/api/jobs/admin/reports/$reportId/ignore',
+      'Report ignored.',
+    );
+  }
+
+  Future<void> removeJob(int reportId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: deepPurple,
+        title: Text('Remove Job?', style: headingStyle(20)),
+        content: Text(
+          'This will deactivate the job and mark every report against it as Removed. The job will no longer be available to users.',
+          style: bodyStyle(14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('CANCEL'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text(
+              'REMOVE JOB',
+              style: TextStyle(color: Colors.redAccent),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    await performAction(
+      reportId,
+      '/api/jobs/admin/reports/$reportId/remove-job',
+      'Job removed. All reports for this job have been marked Removed.',
+    );
+  }
+
+  Future<void> performAction(
+    int reportId,
+    String endpoint,
+    String successMessage,
+  ) async {
+    if (actionLoading) return;
+
+    setState(() => actionLoading = true);
+
+    try {
+      await ApiClient.dio.patch(endpoint);
+      snack(successMessage);
+      await fetchReports();
+    } catch (e) {
+      snack(ApiClient.messageFrom(e));
+    } finally {
+      if (mounted) setState(() => actionLoading = false);
+    }
   }
 
   TextStyle headingStyle(double size) {
@@ -127,9 +205,13 @@ class _AdminUIState extends State<AdminUI> {
     );
   }
 
-  Widget reportCard(int index) {
-    final report = reports[index];
-    final status = report['status']!;
+  Widget reportCard(Map<String, dynamic> report) {
+    final status = (report['status'] ?? 'Pending').toString();
+    final pending = status == 'Pending';
+
+    final reportId = report['id'] is int
+        ? report['id'] as int
+        : int.tryParse(report['id'].toString());
 
     return glassCard(
       child: Column(
@@ -140,7 +222,7 @@ class _AdminUIState extends State<AdminUI> {
             children: [
               Expanded(
                 child: Text(
-                  report['jobTitle']!,
+                  (report['jobTitle'] ?? 'Unknown job').toString(),
                   style: headingStyle(19),
                 ),
               ),
@@ -148,7 +230,7 @@ class _AdminUIState extends State<AdminUI> {
               Text(
                 status.toUpperCase(),
                 style: TextStyle(
-                  color: status == 'Pending'
+                  color: pending
                       ? Colors.orangeAccent
                       : status == 'Removed'
                           ? Colors.redAccent
@@ -160,13 +242,16 @@ class _AdminUIState extends State<AdminUI> {
             ],
           ),
           const SizedBox(height: 5),
-          Text(report['company']!, style: bodyStyle(14)),
+          Text(
+            (report['company'] ?? 'Unknown company').toString(),
+            style: bodyStyle(14),
+          ),
 
           const SizedBox(height: 18),
           Text('JOB DESCRIPTION', style: headingStyle(13)),
           const SizedBox(height: 7),
           Text(
-            report['description']!,
+            (report['description'] ?? 'No description available').toString(),
             style: bodyStyle(14).copyWith(height: 1.5),
           ),
 
@@ -184,7 +269,7 @@ class _AdminUIState extends State<AdminUI> {
               ),
             ),
             child: Text(
-              report['reason']!,
+              (report['reason'] ?? '').toString(),
               style: bodyStyle(14).copyWith(height: 1.5),
             ),
           ),
@@ -193,7 +278,7 @@ class _AdminUIState extends State<AdminUI> {
           Text('REPORTED BY', style: headingStyle(13)),
           const SizedBox(height: 5),
           Text(
-            report['email']!,
+            (report['email'] ?? 'Unknown reporter').toString(),
             style: GoogleFonts.getFont(
               'IBM Plex Serif',
               color: const Color.fromARGB(255, 255, 130, 145),
@@ -202,16 +287,15 @@ class _AdminUIState extends State<AdminUI> {
             ),
           ),
 
-          if (status == 'Pending') ...[
+          if (pending && reportId != null) ...[
             const SizedBox(height: 20),
             Row(
               children: [
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: () => updateReport(index, 'Ignored'),
+                    onPressed: actionLoading ? null : () => ignoreReport(reportId),
                     style: OutlinedButton.styleFrom(
-                      backgroundColor:
-                          const Color.fromARGB(60, 58, 55, 84),
+                      backgroundColor: const Color.fromARGB(60, 58, 55, 84),
                       foregroundColor: lavender,
                       side: const BorderSide(
                         color: Color.fromARGB(180, 202, 190, 231),
@@ -232,14 +316,11 @@ class _AdminUIState extends State<AdminUI> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: () => updateReport(index, 'Removed'),
+                    onPressed: actionLoading ? null : () => removeJob(reportId),
                     style: OutlinedButton.styleFrom(
-                      backgroundColor:
-                          const Color.fromARGB(80, 120, 35, 55),
+                      backgroundColor: const Color.fromARGB(80, 120, 35, 55),
                       foregroundColor: Colors.redAccent.shade100,
-                      side: const BorderSide(
-                        color: Colors.redAccent,
-                      ),
+                      side: const BorderSide(color: Colors.redAccent),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(5),
                       ),
@@ -278,6 +359,11 @@ class _AdminUIState extends State<AdminUI> {
         ),
         actions: [
           IconButton(
+            tooltip: 'Refresh reports',
+            icon: const Icon(Icons.refresh),
+            onPressed: loading ? null : fetchReports,
+          ),
+          IconButton(
             tooltip: 'Logout',
             icon: const Icon(Icons.logout),
             onPressed: () => Navigator.pop(context),
@@ -298,55 +384,74 @@ class _AdminUIState extends State<AdminUI> {
             ],
           ),
         ),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Admin Dashboard',
-                style: headingStyle(27),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Manage users and reported job posts',
-                style: bodyStyle(13),
-              ),
+        child: loading
+            ? const Center(child: CircularProgressIndicator())
+            : SingleChildScrollView(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Admin Dashboard', style: headingStyle(27)),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Manage users and reported job posts',
+                      style: bodyStyle(13),
+                    ),
 
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  statCard(
-                    'Total Users',
-                    totalUsers.toString(),
-                    Icons.people_outline,
-                  ),
-                  const SizedBox(width: 12),
-                  statCard(
-                    'Reports Today',
-                    reportsToday.toString(),
-                    Icons.flag_outlined,
-                  ),
-                ],
-              ),
+                    const SizedBox(height: 24),
+                    Row(
+                      children: [
+                        statCard(
+                          'Total Reports',
+                          reports.length.toString(),
+                          Icons.flag_outlined,
+                        ),
+                        const SizedBox(width: 12),
+                        statCard(
+                          'Reports Today',
+                          reportsToday.toString(),
+                          Icons.today_outlined,
+                        ),
+                      ],
+                    ),
 
-              const SizedBox(height: 30),
-              Text(
-                'Reported Job Posts',
-                style: headingStyle(20),
-              ),
-              const SizedBox(height: 15),
+                    const SizedBox(height: 30),
+                    Text('Reported Job Posts', style: headingStyle(20)),
+                    const SizedBox(height: 15),
 
-              ...List.generate(
-                reports.length,
-                (index) => Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: reportCard(index),
+                    if (loadError != null)
+                      glassCard(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Could not load reports', style: headingStyle(17)),
+                            const SizedBox(height: 8),
+                            Text(loadError!, style: bodyStyle(13)),
+                            const SizedBox(height: 12),
+                            OutlinedButton(
+                              onPressed: fetchReports,
+                              child: const Text('RETRY'),
+                            ),
+                          ],
+                        ),
+                      )
+                    else if (reports.isEmpty)
+                      glassCard(
+                        child: Text(
+                          'No job reports have been submitted yet.',
+                          style: bodyStyle(14),
+                        ),
+                      )
+                    else
+                      ...reports.map(
+                        (report) => Padding(
+                          padding: const EdgeInsets.only(bottom: 16),
+                          child: reportCard(report),
+                        ),
+                      ),
+                  ],
                 ),
               ),
-            ],
-          ),
-        ),
       ),
     );
   }
