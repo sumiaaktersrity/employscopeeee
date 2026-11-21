@@ -5,7 +5,7 @@ if (!KEY) { console.error('JSEARCH_API_KEY is not set in .env'); process.exit(1)
 
 (async () => {
   const url = `https://${HOST}/search-v2?` + new URLSearchParams({
-    query: 'JavaScript jobs', page: '1', num_pages: '1', country: 'us',
+    query: 'JavaScript jobs', page: '1', num_pages: '1', country: 'bd',
   });
   const r = await fetch(url, {
     headers: { 'X-RapidAPI-Key': KEY, 'X-RapidAPI-Host': HOST },
