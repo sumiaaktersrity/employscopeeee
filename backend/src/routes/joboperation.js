@@ -102,7 +102,7 @@ async function fetchExternalJobs(query) {
   const key = process.env.JSEARCH_API_KEY;
   if (!key) return [];
   const country = (process.env.JOB_FETCH_COUNTRY || 'us').toLowerCase();
-  const url = `https://${JSEARCH_HOST}/search?` +
+ const url = `https://${JSEARCH_HOST}/search-v2?` +
     new URLSearchParams({ query, page: '1', num_pages: '1', country });
   const resp = await fetch(url, {
     headers: { 'X-RapidAPI-Key': key, 'X-RapidAPI-Host': JSEARCH_HOST },
@@ -110,15 +110,16 @@ async function fetchExternalJobs(query) {
   });
   if (!resp.ok) throw new Error(`JSearch responded ${resp.status}`);
   const body = await resp.json();
-  return (body.data || []).map((j) => ({
-    source: 'jsearch',
-    externalId: j.job_id,
-    title: j.job_title,
-    company: j.employer_name,
-    location: [j.job_city, j.job_state, j.job_country].filter(Boolean).join(', ') || null,
-    description: j.job_description || null,
-    url: j.job_apply_link || j.job_google_link || null,
-  }));
+ const list = Array.isArray(body.data) ? body.data : (body.data?.jobs || []);
+return list.map((j) => ({
+  source: 'jsearch',
+  externalId: j.job_id,
+  title: j.job_title,
+  company: j.employer_name,
+  location: j.job_location || [j.job_city, j.job_state, j.job_country].filter(Boolean).join(', ') || null,
+  description: j.job_description || null,
+  url: j.job_apply_link || j.job_google_link || null,
+}));
 }
 
 /**
