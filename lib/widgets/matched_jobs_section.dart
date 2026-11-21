@@ -1,13 +1,14 @@
+
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
 class JobListing {
   final int? id;
-  final bool isSaved; // Week 10: is this job in the user's targeted list?
+  final bool isSaved;
   final String title;
   final String company;
   final String location;
-  final int matchPercent; // 0-100, null-safe: pass 0 for "posted jobs" mode
+  final int matchPercent;
   final bool showMatch;
 
   const JobListing({
@@ -21,15 +22,13 @@ class JobListing {
   });
 }
 
-/// Wraps either "Matched Jobs" (CV-driven recommendations, with a match %)
-/// or "Posted Jobs" (plain listings) in one reusable card, so both flows
-/// share the exact same visual container as the rest of the dashboard.
 class MatchedJobsSection extends StatelessWidget {
   final String title;
   final List<JobListing> jobs;
   final void Function(JobListing)? onTapJob;
   final VoidCallback? onSeeAll;
-  final void Function(JobListing)? onToggleSave; // shows a bookmark button
+  final void Function(JobListing)? onToggleSave;
+  final void Function(JobListing)? onReport;
   final String? emptyText;
 
   const MatchedJobsSection({
@@ -39,6 +38,7 @@ class MatchedJobsSection extends StatelessWidget {
     this.onTapJob,
     this.onSeeAll,
     this.onToggleSave,
+    this.onReport,
     this.emptyText,
   });
 
@@ -56,8 +56,11 @@ class MatchedJobsSection extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  const Icon(Icons.work_outline,
-                      color: AppColors.textPrimary, size: 20),
+                  const Icon(
+                    Icons.work_outline,
+                    color: AppColors.textPrimary,
+                    size: 20,
+                  ),
                   const SizedBox(width: 8),
                   Text(title, style: AppTextStyles.sectionHeading),
                 ],
@@ -96,11 +99,17 @@ class MatchedJobsSection extends StatelessWidget {
                     onToggleSave: onToggleSave == null
                         ? null
                         : () => onToggleSave!(jobs[i]),
+                    onReport: onReport == null
+                        ? null
+                        : () => onReport!(jobs[i]),
                   ),
                   if (i != jobs.length - 1)
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 10),
-                      child: Divider(color: AppColors.cardBorder, height: 1),
+                      child: Divider(
+                        color: AppColors.cardBorder,
+                        height: 1,
+                      ),
                     ),
                 ],
               ],
@@ -115,7 +124,14 @@ class _JobTile extends StatelessWidget {
   final JobListing job;
   final VoidCallback onTap;
   final VoidCallback? onToggleSave;
-  const _JobTile({required this.job, required this.onTap, this.onToggleSave});
+  final VoidCallback? onReport;
+
+  const _JobTile({
+    required this.job,
+    required this.onTap,
+    this.onToggleSave,
+    this.onReport,
+  });
 
   Color get _matchColor {
     if (job.matchPercent >= 75) return AppColors.accentGood;
@@ -139,8 +155,11 @@ class _JobTile extends StatelessWidget {
                 color: Colors.white.withOpacity(0.06),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Icon(Icons.business_outlined,
-                  color: AppColors.textSecondary, size: 20),
+              child: const Icon(
+                Icons.business_outlined,
+                color: AppColors.textSecondary,
+                size: 20,
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -169,7 +188,10 @@ class _JobTile extends StatelessWidget {
             if (job.showMatch) ...[
               const SizedBox(width: 8),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: _matchColor.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(10),
@@ -184,20 +206,45 @@ class _JobTile extends StatelessWidget {
                 ),
               ),
             ] else if (onToggleSave == null)
-              const Icon(Icons.chevron_right,
-                  color: AppColors.textSecondary, size: 20),
+              const Icon(
+                Icons.chevron_right,
+                color: AppColors.textSecondary,
+                size: 20,
+              ),
             if (onToggleSave != null)
               IconButton(
                 onPressed: onToggleSave,
-                tooltip: job.isSaved ? 'Remove from targeted jobs' : 'Target this job',
+                tooltip: job.isSaved
+                    ? 'Remove from targeted jobs'
+                    : 'Target this job',
                 padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                constraints: const BoxConstraints(
+                  minWidth: 36,
+                  minHeight: 36,
+                ),
                 icon: Icon(
-                  job.isSaved ? Icons.bookmark : Icons.bookmark_border,
+                  job.isSaved
+                      ? Icons.bookmark
+                      : Icons.bookmark_border,
                   color: job.isSaved
                       ? AppColors.accentInfo
                       : AppColors.textSecondary,
                   size: 22,
+                ),
+              ),
+            if (onReport != null)
+              IconButton(
+                onPressed: onReport,
+                tooltip: 'Report this job',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(
+                  minWidth: 36,
+                  minHeight: 36,
+                ),
+                icon: const Icon(
+                  Icons.flag_outlined,
+                  color: AppColors.textSecondary,
+                  size: 20,
                 ),
               ),
           ],

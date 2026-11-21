@@ -1,3 +1,4 @@
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import '/services/models.dart';
@@ -30,7 +31,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   CvAnalysis? _analysis;
   List<JobModel> _matchedJobs = [];
   List<JobModel> _postedJobs = [];
-  List<JobModel> _savedJobs = []; // Week 10: targeted jobs
+  List<JobModel> _savedJobs = [];
 
   bool get _hasAnalysis => _analysis != null;
 
@@ -60,7 +61,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await _loadSaved();
   }
 
-  /// Week 10: kept separate so a failure here never affects Weeks 5-9 data.
+  /// Load saved/targeted jobs.
   Future<void> _loadSaved() async {
     try {
       final saved = await _jobService.listSaved();
@@ -71,10 +72,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  /// Week 10: bookmark / un-bookmark a job (optimistic, reverts on error).
+  /// Bookmark / un-bookmark a job (optimistic, reverts on error).
   Future<void> _toggleSave(JobListing l) async {
     final id = l.id;
     if (id == null) return;
+
     final previous = List<JobModel>.from(_savedJobs);
     final wasSaved = previous.any((j) => j.id == id);
 
@@ -106,7 +108,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  /// Week 11: skill gap + recommendations for a targeted job (bottom sheet).
+  /// Skill gap + recommendations for a targeted job.
   void _showSkillGap(JobListing l) {
     final id = l.id;
     if (id == null) return;
@@ -120,6 +122,154 @@ class _DashboardScreenState extends State<DashboardScreen> {
         future: _jobService.skillGap(id),
       ),
     );
+  }
+
+  /// Frontend-only report dialog. Nothing is sent to the backend.
+  Future<void> _reportJob(JobListing job) async {
+    const reasons = [
+      'Misleading salary or job information',
+      'Employer is asking for payment or registration fees',
+      'False or inaccurate company information',
+      'Suspicious or potentially fraudulent job',
+      'Inappropriate or misleading job description',
+      'Other',
+    ];
+
+    String selectedReason = reasons.first;
+    final detailsController = TextEditingController();
+
+    final submitted = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: AppColors.drawerFill,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: const BorderSide(color: AppColors.cardBorder),
+              ),
+              title: const Text(
+                'Report Job',
+                style: AppTextStyles.sectionHeading,
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      job.title,
+                      style: AppTextStyles.body.copyWith(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(job.company, style: AppTextStyles.caption),
+                    const SizedBox(height: 18),
+                    const Text(
+                      'Why are you reporting this job?',
+                      style: AppTextStyles.body,
+                    ),
+                    const SizedBox(height: 8),
+                    ...reasons.map(
+                      (reason) => RadioListTile<String>(
+                        value: reason,
+                        groupValue: selectedReason,
+                        onChanged: (value) {
+                          if (value == null) return;
+                          setDialogState(() {
+                            selectedReason = value;
+                          });
+                        },
+                        title: Text(
+                          reason,
+                          style: AppTextStyles.body.copyWith(
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        activeColor: AppColors.accentInfo,
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Additional details (optional)',
+                      style: AppTextStyles.body,
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: detailsController,
+                      maxLines: 3,
+                      style: AppTextStyles.body.copyWith(
+                        color: AppColors.textPrimary,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: 'Provide more information...',
+                        hintStyle: AppTextStyles.caption,
+                        filled: true,
+                        fillColor: AppColors.bgTop,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(
+                            color: AppColors.cardBorder,
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(
+                            color: AppColors.cardBorder,
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(
+                            color: AppColors.accentInfo,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext, false),
+                  child: const Text(
+                    'Cancel',
+                    style: TextStyle(color: AppColors.textSecondary),
+                  ),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.accentInfo,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () => Navigator.pop(dialogContext, true),
+                  child: const Text('Submit Report'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (submitted == true && mounted) {
+      final details = detailsController.text.trim();
+
+      final reportReason = details.isEmpty
+          ? selectedReason
+          : '$selectedReason\nAdditional details: $details';
+
+      // Preview only. No API or database request is made.
+      debugPrint('Report preview: ${job.title} | $reportReason');
+
+      _toast('Preview only — your report has not been submitted.');
+    }
+
+    detailsController.dispose();
   }
 
   void _toast(String msg) {
@@ -147,7 +297,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (!mounted) return;
       setState(() {
         _cv = cv;
-        _analysis = null; // new CV -> previous analysis no longer applies
+        _analysis = null;
         _matchedJobs = [];
       });
     } catch (e) {
@@ -198,8 +348,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Your CV & Job Matches',
-                            style: AppTextStyles.screenTitle),
+                        const Text(
+                          'Your CV & Job Matches',
+                          style: AppTextStyles.screenTitle,
+                        ),
                         const SizedBox(height: 4),
                         const Text(
                           'Upload your CV to get an instant match score and tailored job recommendations.',
@@ -217,7 +369,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
                         const SizedBox(height: 20),
 
-                        // 2. Analysis results (only once analyzed)
+                        // 2. Analysis results
                         if (analysis != null) ...[
                           CVAnalysisResults(
                             matchScore: analysis.score,
@@ -232,6 +384,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           title: _hasAnalysis ? 'Matched Jobs' : 'Posted Jobs',
                           onSeeAll: () {},
                           onToggleSave: _toggleSave,
+                          onReport: _reportJob,
                           jobs: (_hasAnalysis ? _matchedJobs : _postedJobs)
                               .map((j) =>
                                   j.toListing(isSaved: savedIds.contains(j.id)))
@@ -240,13 +393,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
                         const SizedBox(height: 20),
 
-                        // 4. Targeted jobs (Week 10)
+                        // 4. Targeted jobs
                         MatchedJobsSection(
                           title: 'Targeted Jobs',
                           emptyText:
                               'No targeted jobs yet. Tap the bookmark on any job to save it here.',
                           onToggleSave: _toggleSave,
                           onTapJob: _showSkillGap,
+                          onReport: _reportJob,
                           jobs: _savedJobs
                               .map((j) => j.toListing(isSaved: true))
                               .toList(),
@@ -306,9 +460,13 @@ class _AppDrawer extends StatelessWidget {
               const SizedBox(height: 12),
               _DrawerItem(icon: Icons.home_outlined, label: 'Saved Templates'),
               _DrawerItem(
-                  icon: Icons.description_outlined, label: 'Your Career goals'),
+                icon: Icons.description_outlined,
+                label: 'Your Career goals',
+              ),
               _DrawerItem(
-                  icon: Icons.work_outline, label: 'Skill Gap analysis'),
+                icon: Icons.work_outline,
+                label: 'Skill Gap analysis',
+              ),
               _DrawerItem(icon: Icons.settings_outlined, label: 'Settings'),
             ],
           ),
@@ -331,8 +489,10 @@ class _DrawerItem extends StatelessWidget {
         children: [
           Icon(icon, color: AppColors.textPrimary, size: 20),
           const SizedBox(width: 16),
-          Text(label,
-              style: AppTextStyles.body.copyWith(color: AppColors.textPrimary)),
+          Text(
+            label,
+            style: AppTextStyles.body.copyWith(color: AppColors.textPrimary),
+          ),
         ],
       ),
     );
@@ -344,8 +504,12 @@ class _SkillGapSheet extends StatelessWidget {
   final String title;
   final String company;
   final Future<SkillGap> future;
-  const _SkillGapSheet(
-      {required this.title, required this.company, required this.future});
+
+  const _SkillGapSheet({
+    required this.title,
+    required this.company,
+    required this.future,
+  });
 
   Color _color(int p) => p >= 75
       ? AppColors.accentGood
@@ -381,8 +545,10 @@ class _SkillGapSheet extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 16),
-              const Text('Skill Gap & Recommendations',
-                  style: AppTextStyles.sectionHeading),
+              const Text(
+                'Skill Gap & Recommendations',
+                style: AppTextStyles.sectionHeading,
+              ),
               const SizedBox(height: 4),
               Text('$title · $company', style: AppTextStyles.body),
               const SizedBox(height: 16),
@@ -396,9 +562,12 @@ class _SkillGapSheet extends StatelessWidget {
                     );
                   }
                   if (snap.hasError) {
-                    return Text(ApiClient.messageFrom(snap.error!),
-                        style: AppTextStyles.body
-                            .copyWith(color: AppColors.accentGap));
+                    return Text(
+                      ApiClient.messageFrom(snap.error!),
+                      style: AppTextStyles.body.copyWith(
+                        color: AppColors.accentGap,
+                      ),
+                    );
                   }
                   return _content(snap.data!);
                 },
@@ -424,10 +593,13 @@ class _SkillGapSheet extends StatelessWidget {
   Widget _content(SkillGap g) {
     if (g.totalSkills == 0) {
       return const Text(
-          'This job has no listed skills to compare with your CV yet.',
-          style: AppTextStyles.body);
+        'This job has no listed skills to compare with your CV yet.',
+        style: AppTextStyles.body,
+      );
     }
+
     final noGap = g.missingRequired.isEmpty && g.missingOptional.isEmpty;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -457,8 +629,10 @@ class _SkillGapSheet extends StatelessWidget {
         ],
         if (noGap) ...[
           _heading('No skill gap'),
-          const Text('Your CV covers every skill this job lists. Great match!',
-              style: AppTextStyles.body),
+          const Text(
+            'Your CV covers every skill this job lists. Great match!',
+            style: AppTextStyles.body,
+          ),
         ],
         if (g.recommendations.isNotEmpty) ...[
           _heading('What to learn next'),
@@ -468,8 +642,11 @@ class _SkillGapSheet extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.arrow_right_rounded,
-                      color: AppColors.accentInfo, size: 20),
+                  const Icon(
+                    Icons.arrow_right_rounded,
+                    color: AppColors.accentInfo,
+                    size: 20,
+                  ),
                   const SizedBox(width: 4),
                   Expanded(
                     child: Column(
@@ -478,8 +655,9 @@ class _SkillGapSheet extends StatelessWidget {
                         Text(
                           r.required ? r.skill : '${r.skill} (nice to have)',
                           style: AppTextStyles.body.copyWith(
-                              color: AppColors.textPrimary,
-                              fontWeight: FontWeight.bold),
+                            color: AppColors.textPrimary,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                         const SizedBox(height: 2),
                         Text(r.tip, style: AppTextStyles.body),
@@ -491,8 +669,10 @@ class _SkillGapSheet extends StatelessWidget {
             ),
           ),
           if (!g.aiGenerated)
-            const Text('General tips shown (AI tips are unavailable right now).',
-                style: AppTextStyles.caption),
+            const Text(
+              'General tips shown (AI tips are unavailable right now).',
+              style: AppTextStyles.caption,
+            ),
         ],
       ],
     );
