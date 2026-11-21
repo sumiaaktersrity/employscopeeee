@@ -1,12 +1,21 @@
 const mammoth = require('mammoth');
-const pdfParse = require('pdf-parse/lib/pdf-parse.js'); // direct path avoids pdf-parse's debug-mode quirk
 const { findSkills } = require('./skillsDictionary');
 
 /* ---------- 1. Text extraction ---------- */
 async function extractText(buffer, ext) {
   if (ext === '.pdf') {
-    const { text } = await pdfParse(buffer);
-    return normalize(text);
+    try {
+      const { getDocumentProxy, extractText: pdfText } = await import('unpdf'); // unpdf is ESM-only
+      const pdf = await getDocumentProxy(new Uint8Array(buffer));
+      const { text } = await pdfText(pdf, { mergePages: true });
+      return normalize(text);
+    } catch (e) {
+      console.error('PDF parse failed:', e.message || e);
+      throw Object.assign(
+        new Error('This PDF could not be read. Re-export it from Word/Google Docs or upload a DOCX.'),
+        { status: 422 }
+      );
+    }
   }
   if (ext === '.docx') {
     const { value } = await mammoth.extractRawText({ buffer });
