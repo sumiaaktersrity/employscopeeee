@@ -169,22 +169,39 @@ async function importJobs(found, cvSkills) {
  * Fetch from JSearch for this CV and save the matches. Never throws: if the API
  * fails or the quota is used up, analysis still runs on the jobs already in the DB.
  */
+const MAX_QUERIES = 10; // one request per skill; free plan is ~200 requests/month
+
 async function refreshJobsFor(cvSkills) {
   try {
     if (!process.env.JSEARCH_API_KEY || !cvSkills?.length) return 0;
-    const query = `${cvSkills.slice(0, 3).join(' ')} jobs`;
-    const cacheKey = `${query}|${process.env.JOB_FETCH_COUNTRY || 'us'}`;
-    const last = fetchedAt.get(cacheKey);
-    if (last && Date.now() - last < CACHE_MS) return 0;
-    const found = await fetchExternalJobs(query);
-    fetchedAt.set(cacheKey, Date.now()); // only after a successful call
-    return await importJobs(found, cvSkills);
+    const country = process.env.JOB_FETCH_COUNTRY || 'us';
+    const queries = cvSkills.slice(0, MAX_QUERIES).map((s) => `${s} jobs`);
+    const todo = queries.filter((q) => {
+      const last = fetchedAt.get(`${q}|${country}`);
+      return !(last && Date.now() - last < CACHE_MS);
+    });
+    console.log(`[jsearch] queries=${JSON.stringify(queries)} toFetch=${todo.length}`);
+    if (!todo.length) return 0;
+
+    const byId = new Map(); // dedupe: same job from two queries is stored once
+    for (const q of todo) {            // sequential, to avoid rate-limit 429s
+      try {
+        const found = await fetchExternalJobs(q);
+        fetchedAt.set(`${q}|${country}`, Date.now()); // only after a successful call
+        console.log(`[jsearch] "${q}" fetched=${found.length}`);
+        for (const j of found) if (j.externalId && !byId.has(j.externalId)) byId.set(j.externalId, j);
+      } catch (e) {
+        console.error(`[jsearch] "${q}" failed:`, e.message || e);
+      }
+    }
+    const added = await importJobs([...byId.values()], cvSkills);
+    console.log(`[jsearch] unique=${byId.size} inserted=${added}`);
+    return added;
   } catch (e) {
     console.error('refreshJobsFor failed:', e.message || e);
     return 0;
   }
 }
-
 /* ================================================================== *
  * /api/cv                                                             *
  * ================================================================== */
