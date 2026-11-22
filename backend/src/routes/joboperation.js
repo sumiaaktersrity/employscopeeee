@@ -38,6 +38,15 @@ jobsRouter.use(requireUser);
 // Admin authorization is checked against public."User".role.
 const requireAdmin = requireRole('admin');
 
+// GET /api/jobs/admin/me
+// Returns the authenticated admin's numeric public.User ID.
+jobsRouter.get('/admin/me', requireAdmin, (req, res) => {
+  res.json({
+    adminId: req.userId,
+    role: req.userRole,
+  });
+});
+
 const wrap = (fn) => (req, res, next) =>
   Promise.resolve(fn(req, res, next)).catch(next);
 

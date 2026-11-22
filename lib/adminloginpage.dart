@@ -1,7 +1,10 @@
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:dio/dio.dart';
 import 'adminui.dart';
+import 'services/api_client.dart';
 
 class AdminLoginPage extends StatefulWidget {
   const AdminLoginPage({super.key});
@@ -26,7 +29,9 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
 
   void _snack(String msg) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg)),
+    );
   }
 
   Future<void> _login() async {
@@ -40,37 +45,49 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
     }
 
     setState(() => _loading = true);
+
     final supabase = Supabase.instance.client;
 
     try {
-      final res =
-          await supabase.auth.signInWithPassword(email: email, password: pass);
-      final user = res.user;
-      if (user == null) throw const AuthException('Login failed');
+      // Step 1: Authenticate using Supabase email/password.
+      final res = await supabase.auth.signInWithPassword(
+        email: email,
+        password: pass,
+      );
 
-      // must be role=admin AND the typed Admin ID must equal User.id
-      final row = await supabase
-          .from('User')
-          .select('id, role')
-          .eq('id', user.id)
-          .eq('role', 'admin')
-          .maybeSingle();
+      if (res.user == null) {
+        throw const AuthException('Login failed');
+      }
 
-      if (row == null || row['id'].toString() != adminId) {
+      // Step 2: Ask the backend to verify the user's admin role.
+      // ApiClient automatically attaches the Supabase access token.
+      final response = await ApiClient.dio.get('/jobs/admin/me');
+
+      final returnedAdminId =
+          response.data['adminId'].toString();
+
+      // Step 3: Compare the typed Admin ID with public.User.id.
+      if (returnedAdminId != adminId) {
         await supabase.auth.signOut();
         _snack('Invalid admin credentials');
         return;
       }
 
+      // Step 4: Open the admin panel only after both checks pass.
       if (!mounted) return;
+
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const AdminUI()),
       );
     } on AuthException catch (e) {
       _snack(e.message);
-    } catch (_) {
-      _snack('Something went wrong');
+    } on DioException catch (e) {
+      await supabase.auth.signOut();
+      _snack(ApiClient.messageFrom(e));
+    } catch (e) {
+      await supabase.auth.signOut();
+      _snack('Something went wrong: $e');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
