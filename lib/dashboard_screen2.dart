@@ -124,7 +124,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  /// Frontend-only report dialog. Nothing is sent to the backend.
+  /// Submit a report for this job to the backend.
   Future<void> _reportJob(JobListing job) async {
     const reasons = [
       'Misleading salary or job information',
@@ -138,138 +138,155 @@ class _DashboardScreenState extends State<DashboardScreen> {
     String selectedReason = reasons.first;
     final detailsController = TextEditingController();
 
-    final submitted = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              backgroundColor: AppColors.drawerFill,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-                side: const BorderSide(color: AppColors.cardBorder),
-              ),
-              title: const Text(
-                'Report Job',
-                style: AppTextStyles.sectionHeading,
-              ),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      job.title,
-                      style: AppTextStyles.body.copyWith(
-                        color: AppColors.textPrimary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    Text(job.company, style: AppTextStyles.caption),
-                    const SizedBox(height: 18),
-                    const Text(
-                      'Why are you reporting this job?',
-                      style: AppTextStyles.body,
-                    ),
-                    const SizedBox(height: 8),
-                    ...reasons.map(
-                      (reason) => RadioListTile<String>(
-                        value: reason,
-                        groupValue: selectedReason,
-                        onChanged: (value) {
-                          if (value == null) return;
-                          setDialogState(() {
-                            selectedReason = value;
-                          });
-                        },
-                        title: Text(
-                          reason,
-                          style: AppTextStyles.body.copyWith(
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                        activeColor: AppColors.accentInfo,
-                        contentPadding: EdgeInsets.zero,
-                        dense: true,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Additional details (optional)',
-                      style: AppTextStyles.body,
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: detailsController,
-                      maxLines: 3,
-                      style: AppTextStyles.body.copyWith(
-                        color: AppColors.textPrimary,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: 'Provide more information...',
-                        hintStyle: AppTextStyles.caption,
-                        filled: true,
-                        fillColor: AppColors.bgTop,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(
-                            color: AppColors.cardBorder,
-                          ),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(
-                            color: AppColors.cardBorder,
-                          ),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(
-                            color: AppColors.accentInfo,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+    try {
+      final submitted = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) {
+          return StatefulBuilder(
+            builder: (context, setDialogState) {
+              return AlertDialog(
+                backgroundColor: AppColors.drawerFill,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  side: const BorderSide(color: AppColors.cardBorder),
                 ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext, false),
-                  child: const Text(
-                    'Cancel',
-                    style: TextStyle(color: AppColors.textSecondary),
+                title: const Text(
+                  'Report Job',
+                  style: AppTextStyles.sectionHeading,
+                ),
+                content: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        job.title,
+                        style: AppTextStyles.body.copyWith(
+                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      Text(job.company, style: AppTextStyles.caption),
+                      const SizedBox(height: 18),
+                      const Text(
+                        'Why are you reporting this job?',
+                        style: AppTextStyles.body,
+                      ),
+                      const SizedBox(height: 8),
+                      ...reasons.map(
+                        (reason) => RadioListTile<String>(
+                          value: reason,
+                          groupValue: selectedReason,
+                          onChanged: (value) {
+                            if (value == null) return;
+                            setDialogState(() {
+                              selectedReason = value;
+                            });
+                          },
+                          title: Text(
+                            reason,
+                            style: AppTextStyles.body.copyWith(
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          activeColor: AppColors.accentInfo,
+                          contentPadding: EdgeInsets.zero,
+                          dense: true,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Additional details (optional)',
+                        style: AppTextStyles.body,
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: detailsController,
+                        maxLines: 3,
+                        style: AppTextStyles.body.copyWith(
+                          color: AppColors.textPrimary,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: 'Provide more information...',
+                          hintStyle: AppTextStyles.caption,
+                          filled: true,
+                          fillColor: AppColors.bgTop,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                              color: AppColors.cardBorder,
+                            ),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                              color: AppColors.cardBorder,
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                              color: AppColors.accentInfo,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.accentInfo,
-                    foregroundColor: Colors.white,
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext, false),
+                    child: const Text(
+                      'Cancel',
+                      style: TextStyle(color: AppColors.textSecondary),
+                    ),
                   ),
-                  onPressed: () => Navigator.pop(dialogContext, true),
-                  child: const Text('Submit Report'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.accentInfo,
+                      foregroundColor: Colors.white,
+                    ),
+                    onPressed: () => Navigator.pop(dialogContext, true),
+                    child: const Text('Submit Report'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
 
-    if (submitted == true && mounted) {
+      if (submitted != true || !mounted) return;
+
       final details = detailsController.text.trim();
-
       final reportReason = details.isEmpty
           ? selectedReason
           : '$selectedReason\nAdditional details: $details';
 
-      // Preview only. No API or database request is made.
-      debugPrint('Report preview: ${job.title} | $reportReason');
+      final jobId = job.id;
+      if (jobId == null) {
+        _toast('Unable to submit report: this job has no valid ID.');
+        return;
+      }
 
-      _toast('Preview only — your report has not been submitted.');
+      try {
+        await ApiClient.dio.post(
+          '/api/jobs/$jobId/report',
+          data: {'reason': reportReason},
+        );
+
+        if (mounted) {
+          _toast('Your report has been submitted successfully.');
+        }
+      } catch (e) {
+        if (mounted) {
+          _toast(ApiClient.messageFrom(e));
+        }
+      }
+    } finally {
+      detailsController.dispose();
     }
-
-    detailsController.dispose();
   }
 
   void _toast(String msg) {

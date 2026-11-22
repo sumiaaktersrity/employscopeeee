@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'adminui.dart';
 
 class AdminLoginPage extends StatefulWidget {
@@ -13,6 +14,7 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
   final _adminIdCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
+  bool _loading = false;
 
   @override
   void dispose() {
@@ -20,6 +22,58 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
     _emailCtrl.dispose();
     _passCtrl.dispose();
     super.dispose();
+  }
+
+  void _snack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  Future<void> _login() async {
+    final adminId = _adminIdCtrl.text.trim();
+    final email = _emailCtrl.text.trim();
+    final pass = _passCtrl.text;
+
+    if (adminId.isEmpty || email.isEmpty || pass.isEmpty) {
+      _snack('Fill in all fields');
+      return;
+    }
+
+    setState(() => _loading = true);
+    final supabase = Supabase.instance.client;
+
+    try {
+      final res =
+          await supabase.auth.signInWithPassword(email: email, password: pass);
+      final user = res.user;
+      if (user == null) throw const AuthException('Login failed');
+
+      // must be role=admin AND the typed Admin ID must equal User.id
+      final row = await supabase
+          .from('User')
+          .select('id, role')
+          .eq('id', user.id)
+          .eq('role', 'admin')
+          .maybeSingle();
+
+      if (row == null || row['id'].toString() != adminId) {
+        await supabase.auth.signOut();
+        _snack('Invalid admin credentials');
+        return;
+      }
+
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const AdminUI()),
+      );
+    } on AuthException catch (e) {
+      _snack(e.message);
+    } catch (_) {
+      _snack('Something went wrong');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   @override
@@ -77,6 +131,7 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
                   const SizedBox(height: 35),
                   TextField(
                     controller: _adminIdCtrl,
+                    style: const TextStyle(color: Colors.white),
                     decoration: const InputDecoration(
                       hintText: 'Enter Admin ID No.',
                       hintStyle: TextStyle(color: Colors.white),
@@ -86,6 +141,7 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
                   TextField(
                     controller: _emailCtrl,
                     keyboardType: TextInputType.emailAddress,
+                    style: const TextStyle(color: Colors.white),
                     decoration: const InputDecoration(
                       hintText: 'Enter admin email',
                       hintStyle: TextStyle(color: Colors.white),
@@ -95,6 +151,8 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
                   TextField(
                     controller: _passCtrl,
                     obscureText: true,
+                    style: const TextStyle(color: Colors.white),
+                    onSubmitted: (_) => _loading ? null : _login(),
                     decoration: const InputDecoration(
                       hintText: 'Enter password',
                       hintStyle: TextStyle(color: Colors.white),
@@ -105,15 +163,7 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
                     width: double.infinity,
                     height: 55,
                     child: OutlinedButton(
-                      // TEMPORARY: no credential verification or endpoint.
-                      onPressed: () {
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const AdminUI(),
-                          ),
-                        );
-                      },
+                      onPressed: _loading ? null : _login,
                       style: OutlinedButton.styleFrom(
                         side: const BorderSide(
                           color: Colors.white,
@@ -123,14 +173,23 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
                           borderRadius: BorderRadius.circular(15),
                         ),
                       ),
-                      child: const Text(
-                        'LOGIN',
-                        style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
+                      child: _loading
+                          ? const SizedBox(
+                              height: 22,
+                              width: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Text(
+                              'LOGIN',
+                              style: TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
                     ),
                   ),
                   const SizedBox(height: 12),
